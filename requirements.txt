@@ -1,0 +1,10 @@
+# Core dependencies
+aiohttp==3.9.1  # For async HTTP requests
+beautifulsoup4==4.12.2  # For HTML parsing
+lxml==4.9.3  # Required by BeautifulSoup
+playwright==1.42.0  # Modern browser automation (replaces Selenium)
+reportlab==4.0.7  # For PDF report generation
+tenacity==8.2.3  # For retry logic
+grobid-client-python==0.1.2  # Updated to stable available version
+# Added Brotli support for aiohttp
+brotli==1.1.0

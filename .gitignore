@@ -1,0 +1,16 @@
+# Ignore data/output folders
+output/
+filtered_output/
+output_full_fos/
+
+# Optional: ignore all large JSON files
+*.json
+
+# But keep configs if needed
+!package.json
+!config.json
+
+# Python stuff
+__pycache__/
+*.pyc
+.env
