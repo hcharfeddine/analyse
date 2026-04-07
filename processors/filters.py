@@ -4,7 +4,7 @@ Paper filtering utilities.
 
 from typing import List
 
-from models import Paper
+from models.paper import Paper
 
 
 class PaperFilter:

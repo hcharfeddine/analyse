@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 from playwright.async_api import async_playwright, BrowserContext, Page, Browser
 
-from models import Paper, Author
-from exceptions import APIException
+from models.paper import Paper, Author
+from utils.exceptions import APIException
 from config import config
 
 

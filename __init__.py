@@ -18,28 +18,28 @@ Modules:
     exceptions: Custom exceptions
 """
 
-from .models import Paper, Author
+from .models.paper import Paper, Author
 from .config import config, ScraperConfig
-from .exceptions import ScraperException, APIException, ExportException, ValidationException
-from .data_processor import DataProcessor
-from .filters import PaperFilter
-from .exporters import CSVExporter, JSONExporter, PDFExporter
-from .api_clients import (
+from .utils.exceptions import ScraperException, APIException, ExportException, ValidationException
+from .processors.data_processor import DataProcessor
+from .processors.filters import PaperFilter
+from .exporters.base_exporter import CSVExporter, JSONExporter, PDFExporter
+from .services.base_client import (
     OpenAlexClient,
     CrossRefClient,
     ArXivClient,
     get_author_citation_cache,
     reset_author_citation_cache
 )
-from .advanced_enrichers import (
+from .enrichers.advanced_enrichers import (
     GoogleScholarEnricher,
     SSRNEnricher,
     ResearchGateEnricher,
     DOIEnricher
 )
-from .metadata_enricher_v3 import ComprehensiveMetadataEnricher
-from .analyze_metadata_gaps import MetadataGapAnalyzer
-from .metadata_quality_report import MetadataQualityReport
+from .enrichers.metadata_enricher import ComprehensiveMetadataEnricher
+from .processors.analyzer_metadata_gaps import MetadataGapAnalyzer
+from .quality.metadata_quality_report import MetadataQualityReport
 
 __version__ = "1.0.0"
 __author__ = "Academic Paper Collection Team"

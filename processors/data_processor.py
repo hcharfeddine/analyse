@@ -5,7 +5,7 @@ Data processing utilities for academic papers.
 from typing import List, Dict
 from collections import defaultdict
 
-from models import Paper
+from models.paper import Paper
 
 
 class DataProcessor:

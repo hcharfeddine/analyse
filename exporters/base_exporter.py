@@ -17,8 +17,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
-from models import Paper
-from exceptions import ExportException
+from models.paper import Paper
+from utils.exceptions import ExportException
 
 
 class BaseExporter:

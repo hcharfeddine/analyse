@@ -6,10 +6,10 @@ import os
 import json
 
 # Add the directory to path so we can import modules
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from api_clients import OpenAlexClient
-from models import Paper
+from services.base_client import OpenAlexClient
+from models.paper import Paper
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

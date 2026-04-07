@@ -5,12 +5,12 @@ from datetime import datetime
 import logging
 import time
 
-from api_clients import OpenAlexClient, get_author_citation_cache, reset_author_citation_cache
-from models import Paper
-from filters import PaperFilter
-from data_processor import DataProcessor
-from exporters import CSVExporter, JSONExporter, PDFExporter
-from metadata_quality_report import MetadataQualityReport
+from services.base_client import OpenAlexClient, get_author_citation_cache, reset_author_citation_cache
+from models.paper import Paper
+from processors.filters import PaperFilter
+from processors.data_processor import DataProcessor
+from exporters.base_exporter import CSVExporter, JSONExporter, PDFExporter
+from quality.metadata_quality_report import MetadataQualityReport
 from config import config
 
 logging.basicConfig(

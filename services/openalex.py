@@ -10,8 +10,8 @@ import logging
 from typing import List, Optional, Dict, Set
 from abc import ABC, abstractmethod
 
-from models import Paper, Author, CitationPaper
-from exceptions import APIException
+from models.paper import Paper, Author, CitationPaper
+from utils.exceptions import APIException
 from config import config
 
 logger = logging.getLogger(__name__)
@@ -148,7 +148,7 @@ class OpenAlexClient(BaseAPIClient):
     
     async def _get_author_citation_count(self, author_id: str) -> int:
         """Fetch total citation count for an author."""
-        if not author_id or config.SKIP_AUTHOR_CITATIONS:
+        if not author_id:
             return 0
             
         cache = get_author_citation_cache()
@@ -162,6 +162,8 @@ class OpenAlexClient(BaseAPIClient):
         try:
             url = f"https://api.openalex.org/authors/{author_id}"
             params = {}
+            if config.CORE_API_KEY:
+                params['api_key'] = config.CORE_API_KEY
             if config.OPENALEX_MAILTO:
                 params['mailto'] = config.OPENALEX_MAILTO
             data = await self._make_request(url, params)
@@ -175,6 +177,7 @@ class OpenAlexClient(BaseAPIClient):
 
     async def search(self, keyword: str, year: int, limit: int) -> List[Paper]:
         all_papers = []
+        page_count = 0
         try:
             cursor = "*"
             per_page = 200 # Max per page for cursor is 200
@@ -185,6 +188,8 @@ class OpenAlexClient(BaseAPIClient):
                     'per_page': per_page, # Always request full page for stability
                     'cursor': cursor
                 }
+                if config.CORE_API_KEY:
+                    params['api_key'] = config.CORE_API_KEY
                 if config.OPENALEX_MAILTO:
                     params['mailto'] = config.OPENALEX_MAILTO
                 if keyword and keyword != "*":
@@ -192,8 +197,10 @@ class OpenAlexClient(BaseAPIClient):
                 
                 data = await self._make_request(self.BASE_URL, params)
                 results = data.get('results', [])
+                page_count += 1
                 
                 if not results:
+                    logger.info(f"No more results for year {year} after {page_count} pages, total papers: {len(all_papers)}")
                     break
                     
                 # Process papers one by one or in small batches to avoid 429
@@ -216,11 +223,11 @@ class OpenAlexClient(BaseAPIClient):
                 
                 cursor = data.get('meta', {}).get('next_cursor')
                 if not cursor:
-                    break
-                
-                # Minimal sleep between pages for speed
+                      break
+                  
+                  # Minimal sleep between pages (OpenAlex has no rate limits)
                 await asyncio.sleep(0.1)
-        
+                    
         except Exception as e:
             logger.error(f"OpenAlex search error: {e}")
         return all_papers[:limit]

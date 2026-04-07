@@ -6,16 +6,16 @@ import logging
 import asyncio
 from typing import List
 
-from models import Paper
-from api_clients import OpenAlexClient, CrossRefClient, ArXivClient
-from advanced_enrichers import (
+from models.paper import Paper
+from services.base_client import OpenAlexClient, CrossRefClient, ArXivClient
+from enrichers.advanced_enrichers import (
     GoogleScholarEnricher,
     SSRNEnricher,
     ResearchGateEnricher,
     DOIEnricher
 )
-# from pdf_downloader import PDFDownloader
-# from grobid_enricher import GROBIDEnricher
+# from tools.pdf_downloader import PDFDownloader
+# from enrichers.grobid_enricher import GROBIDEnricher
 from config import config
 
 logger = logging.getLogger(__name__)

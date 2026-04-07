@@ -6,7 +6,7 @@ Test GROBID extraction on a single PDF to debug affiliation parsing.
 import asyncio
 import logging
 from pathlib import Path
-from grobid_enricher import GROBIDEnricher
+from enrichers.grobid_enricher import GROBIDEnricher
 
 # Setup logging to see debug output
 logging.basicConfig(

@@ -10,7 +10,7 @@ import logging
 from typing import Optional
 from difflib import SequenceMatcher
 
-from models import Paper
+from models.paper import Paper
 
 logger = logging.getLogger(__name__)
 
