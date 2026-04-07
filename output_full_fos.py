@@ -2,6 +2,7 @@ import os
 import json
 import re
 from pathlib import Path
+import ijson
 
 # === PATHS ===
 INPUT_DIR = r"d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/filtered_output"
@@ -25,108 +26,134 @@ def get_year_from_file(file_path):
     match = re.search(r'_(\d{4})_filtered\.json$', filename)
     return match.group(1) if match else "unknown"
 
-# === STREAM JSON OBJECTS FROM HUGE ARRAY ===
-def stream_json_objects(file):
-    buffer = ""
-    depth = 0
+# === OPTIMIZED: Fast streaming JSON parser using ijson ===
+def stream_json_objects_fast(file_path):
+    """Stream JSON objects from large array using ijson (much faster)"""
+    with open(file_path, 'rb') as f:
+        for obj in ijson.items(f, 'item'):
+            yield obj
 
-    while True:
-        chunk = file.read(1024 * 1024)  # 1MB chunks
-        if not chunk:
-            break
+# === BATCH PROCESSING ===
+def process_batch_papers(papers):
+    """Process a batch of papers and return updated batch + tracking info"""
+    batch = []
+    keywords_ids = []
+    abstract_ids = []
+    pdf_ids = []
+    updated_count = 0
 
-        buffer += chunk
-        i = 0
-        start = None
+    for paper in papers:
+        # --- Venue ---
+        if is_missing_venue(paper.get("venue")):
+            paper["venue"] = paper.get("publisher") or paper.get("journal_name")
 
-        while i < len(buffer):
-            char = buffer[i]
+        # --- Field of Study ---
+        if is_missing_fos(paper.get("field_of_study")):
+            updated_count += 1
+            paper_id = paper.get("paper_id")
 
-            if char == '{':
-                if depth == 0:
-                    start = i
-                depth += 1
+            if paper.get("keywords"):
+                paper["field_of_study"] = paper["keywords"]
+                keywords_ids.append(paper_id)
 
-            elif char == '}':
-                depth -= 1
-                if depth == 0 and start is not None:
-                    yield buffer[start:i+1]
-                    buffer = buffer[i+1:]
-                    i = -1
-                    start = None
+            elif paper.get("abstract") and paper["abstract"] != "Abstract not available":
+                paper["field_of_study"] = paper["abstract"]
+                abstract_ids.append(paper_id)
 
-            i += 1
+            elif paper.get("pdf"):
+                paper["field_of_study"] = paper["pdf"]
+                pdf_ids.append(paper_id)
 
-# === PART 3 STORAGE ===
-fos_from_keywords = []
-fos_from_abstract = []
-fos_from_pdf = []
+        batch.append(paper)
 
-# === PROCESS FILES ===
+    return batch, updated_count, keywords_ids, abstract_ids, pdf_ids
+
+# === MAIN PROCESSING ===
+BATCH_SIZE = 500  # Process 500 papers at a time
+fos_from_keywords_all = []
+fos_from_abstract_all = []
+fos_from_pdf_all = []
+
 files = sorted(Path(INPUT_DIR).glob("*_filtered.json"))
 
 for file_path in files:
     year = get_year_from_file(str(file_path))
-    print(f"Processing {file_path} for year {year}...")
+    print(f"\n▶ Processing {file_path.name} (Year {year})...")
 
     output_file = os.path.join(modified_dir, f"papers_{year}_modified.json")
+    total_updated = 0
+    total_papers = 0
 
-    updated_count = 0
-
-    with open(file_path, 'r', encoding='utf-8') as f_in, \
-         open(output_file, 'w', encoding='utf-8') as f_out:
-
-        # Start JSON array
+    batch = []
+    with open(output_file, 'w', encoding='utf-8') as f_out:
         f_out.write("[\n")
         first = True
 
-        for obj_str in stream_json_objects(f_in):
-            try:
-                paper = json.loads(obj_str)
-            except:
-                continue
+        try:
+            for paper in stream_json_objects_fast(file_path):
+                batch.append(paper)
+                total_papers += 1
 
-            # --- Venue ---
-            if is_missing_venue(paper.get("venue")):
-                paper["venue"] = paper.get("publisher") or paper.get("journal_name")
+                # Process batch when size reached
+                if len(batch) >= BATCH_SIZE:
+                    processed, batch_updated, kw_ids, abs_ids, pdf_ids = process_batch_papers(batch)
 
-            # --- Field of Study ---
-            if is_missing_fos(paper.get("field_of_study")):
-                updated_count += 1
+                    # Write batch
+                    for p in processed:
+                        if not first:
+                            f_out.write(",\n")
+                        f_out.write(json.dumps(p))
+                        first = False
 
-                if paper.get("keywords"):
-                    paper["field_of_study"] = paper["keywords"]
-                    fos_from_keywords.append(paper.get("paper_id"))
+                    # Track sources
+                    total_updated += batch_updated
+                    fos_from_keywords_all.extend(kw_ids)
+                    fos_from_abstract_all.extend(abs_ids)
+                    fos_from_pdf_all.extend(pdf_ids)
 
-                elif paper.get("abstract") and paper["abstract"] != "Abstract not available":
-                    paper["field_of_study"] = paper["abstract"]
-                    fos_from_abstract.append(paper.get("paper_id"))
+                    batch = []
+                    print(f"  ✓ Processed {total_papers} papers...")
 
-                elif paper.get("pdf"):
-                    paper["field_of_study"] = paper["pdf"]
-                    fos_from_pdf.append(paper.get("paper_id"))
+        except Exception as e:
+            print(f"  ✗ Error: {e}")
+            continue
 
-            # Write JSON object properly with commas
-            if not first:
-                f_out.write(",\n")
-            f_out.write(json.dumps(paper))
-            first = False
+        # Process remaining papers
+        if batch:
+            processed, batch_updated, kw_ids, abs_ids, pdf_ids = process_batch_papers(batch)
+            for p in processed:
+                if not first:
+                    f_out.write(",\n")
+                f_out.write(json.dumps(p))
+                first = False
 
-        # Close JSON array
+            total_updated += batch_updated
+            fos_from_keywords_all.extend(kw_ids)
+            fos_from_abstract_all.extend(abs_ids)
+            fos_from_pdf_all.extend(pdf_ids)
+
         f_out.write("\n]")
 
-    print(f"Year {year}: {updated_count} papers updated.")
+    print(f"  ✓ Year {year}: {total_updated}/{total_papers} papers updated")
 
-# === SAVE PART 3 FILES ===
+# === SAVE SOURCES FILES (only paper IDs) ===
+print("\n▶ Saving source tracking files...")
 with open(os.path.join(fos_sources_dir, "fos_from_keywords.json"), 'w') as f:
-    json.dump(fos_from_keywords, f, indent=2)
+    json.dump({"count": len(fos_from_keywords_all), "paper_ids": fos_from_keywords_all}, f)
 
 with open(os.path.join(fos_sources_dir, "fos_from_abstract.json"), 'w') as f:
-    json.dump(fos_from_abstract, f, indent=2)
+    json.dump({"count": len(fos_from_abstract_all), "paper_ids": fos_from_abstract_all}, f)
 
 with open(os.path.join(fos_sources_dir, "fos_from_pdf.json"), 'w') as f:
-    json.dump(fos_from_pdf, f, indent=2)
+    json.dump({"count": len(fos_from_pdf_all), "paper_ids": fos_from_pdf_all}, f)
 
-print("\n=== DONE ===")
+print("\n" + "="*60)
+print("✓ PROCESSING COMPLETE")
+print("="*60)
 print(f"Modified JSON files: {modified_dir}")
-print(f"Paper ID outputs: {fos_sources_dir}")
+print(f"Source tracking: {fos_sources_dir}")
+print(f"\nSummary:")
+print(f"  - Keywords source: {len(fos_from_keywords_all)} papers")
+print(f"  - Abstract source: {len(fos_from_abstract_all)} papers")
+print(f"  - PDF source: {len(fos_from_pdf_all)} papers")
+print(f"  - Total updated: {len(fos_from_keywords_all) + len(fos_from_abstract_all) + len(fos_from_pdf_all)} papers")
