@@ -19,28 +19,71 @@ def stream_json_objects(file_path: str):
         for obj in ijson.items(f, 'item'):
             yield obj
 
+def is_valid_fos(fos_name: str) -> bool:
+    """
+    Check if a string looks like a valid field of study name.
+    Valid FOS names are short, don't contain HTML entities, 
+    don't look like abstracts, etc.
+    """
+    if not fos_name:
+        return False
+    
+    fos_name = fos_name.strip()
+    
+    # Too short or too long
+    if len(fos_name) < 2 or len(fos_name) > 100:
+        return False
+    
+    # Skip default/placeholder values
+    invalid_values = {"Field not classified", "Unknown", "N/A", "None", "null", "", "-", ".", "...", "*"}
+    if fos_name in invalid_values:
+        return False
+    
+    # Skip if it contains HTML entities
+    if "&#x" in fos_name or "&lt;" in fos_name or "&gt;" in fos_name or "&amp;" in fos_name:
+        return False
+    
+    # Skip if it looks like a sentence (has too many spaces - likely abstract)
+    if fos_name.count(' ') > 8:
+        return False
+    
+    # Skip if starts with quotes (likely abstract excerpt)
+    if fos_name.startswith('"') or fos_name.startswith("'"):
+        return False
+    
+    # Skip if contains numbers patterns that look like dates/codes
+    if fos_name.startswith("(") or fos_name.startswith("1") or fos_name.startswith("0"):
+        return False
+    
+    # Skip non-ASCII heavy strings (likely corrupted data)
+    ascii_chars = sum(1 for c in fos_name if ord(c) < 128)
+    if len(fos_name) > 5 and ascii_chars / len(fos_name) < 0.5:
+        return False
+    
+    return True
+
 def normalize_fos(fos_value) -> List[str]:
     """
     Normalize field_of_study to a list of strings
     Handles: string, list of strings, list of dicts, None
     """
-    if not fos_value or fos_value == "Field not classified":
+    if not fos_value:
         return []
     
     if isinstance(fos_value, str):
-        if len(fos_value) > 200:
-            return []
-        return [fos_value.strip()]
+        if is_valid_fos(fos_value):
+            return [fos_value.strip()]
+        return []
     
     if isinstance(fos_value, list):
         normalized = []
         for item in fos_value:
             if isinstance(item, str):
-                if len(item) <= 200:
+                if is_valid_fos(item):
                     normalized.append(item.strip())
             elif isinstance(item, dict):
                 name = item.get("name") or item.get("display_name") or item.get("field")
-                if name and len(name) <= 200:
+                if name and is_valid_fos(name):
                     normalized.append(name.strip())
         return normalized
     
