@@ -70,10 +70,6 @@ if __name__ == "__main__":
     print("="*60)
     print(f"Input directory: {INPUT_DIR}\n")
     
-    # First do a dry run to show what will happen
-    print("--- DRY RUN ---")
-    rename_modified_files(INPUT_DIR, dry_run=True)
-    
-    # Uncomment the following lines to actually rename files:
-    # print("\n--- ACTUAL RENAME ---")
-    # rename_modified_files(INPUT_DIR, dry_run=False)
+    # Actually rename the files
+    print("--- RENAMING FILES ---")
+    rename_modified_files(INPUT_DIR, dry_run=False)
