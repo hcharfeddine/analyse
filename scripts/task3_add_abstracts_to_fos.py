@@ -47,8 +47,6 @@ def find_abstracts_in_file(file_path: str, paper_ids: Set[str]) -> Dict[str, Dic
             if abstract and abstract != "Abstract not available":
                 found[paper_id] = {
                     "paper_id": paper_id,
-                    "title": paper.get("title", ""),
-                    "year": paper.get("year"),
                     "abstract": abstract
                 }
         
@@ -173,8 +171,6 @@ def add_abstracts_streaming(fos_file: str, papers_dir: str, output_file: str):
                     if abstract and abstract != "Abstract not available":
                         entry = {
                             "paper_id": paper_id,
-                            "title": paper.get("title", ""),
-                            "year": paper.get("year"),
                             "abstract": abstract
                         }
                         
