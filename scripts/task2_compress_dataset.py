@@ -1,230 +1,197 @@
 """
-Task 2: Compress 140GB JSON dataset to max 10GB
-Combines all JSON files into a single compressed archive
+Task 2: Compress 140GB JSON dataset into multiple archives (max 10GB each)
+Groups files together until reaching ~10GB, then starts a new archive
 """
 
 import os
 import json
 import gzip
 from pathlib import Path
-from typing import Generator, Dict, Any
-import ijson
+from typing import List, Tuple
 
 # === CONFIGURATION ===
 INPUT_DIR = "output_filtered/modified_per_year"
-OUTPUT_FILE = "output_filtered/compressed/all_papers.json.gz"
-TARGET_SIZE_GB = 10
+OUTPUT_DIR = "output_filtered/compressed"
+MAX_ARCHIVE_SIZE_GB = 10
 COMPRESSION_LEVEL = 9  # Maximum gzip compression (1-9)
 
-# Fields to keep (remove verbose fields to reduce size)
-ESSENTIAL_FIELDS = [
-    "paper_id",
-    "title",
-    "year",
-    "cited_by_count",
-    "doi",
-    "publisher",
-    "abstract",
-    "publication_type",
-    "journal_name",
-    "venue",
-    "field_of_study",
-    "keywords",
-    "authors",
-    "references",
-    "pdf_url"
-]
 
-# Fields to keep for authors (reduce author data)
-AUTHOR_ESSENTIAL_FIELDS = [
-    "author_id",
-    "affiliations",
-    "countries",
-    "citation_count"
-]
+def get_file_size_gb(file_path: str) -> float:
+    """Get file size in GB"""
+    return os.path.getsize(file_path) / (1024 ** 3)
 
 
-def get_directory_size_gb(directory: str) -> float:
-    """Get total size of directory in GB"""
-    total_size = 0
-    for file_path in Path(directory).rglob("*.json"):
-        if file_path.is_file():
-            total_size += file_path.stat().st_size
-    return total_size / (1024 ** 3)
-
-
-def stream_json_objects(file_path: str) -> Generator[Dict[Any, Any], None, None]:
-    """Stream JSON objects from a large JSON array file"""
-    with open(file_path, 'rb') as f:
-        for obj in ijson.items(f, 'item'):
-            yield obj
-
-
-def minimize_paper(paper: Dict[Any, Any]) -> Dict[Any, Any]:
-    """Reduce paper size by keeping only essential fields"""
-    minimized = {}
-    
-    for field in ESSENTIAL_FIELDS:
-        if field in paper:
-            if field == "authors":
-                # Minimize author data
-                minimized["authors"] = [
-                    {k: v for k, v in author.items() if k in AUTHOR_ESSENTIAL_FIELDS}
-                    for author in paper.get("authors", [])
-                ]
-            elif field == "references":
-                # Keep only first 50 references
-                refs = paper.get("references", [])
-                minimized["references"] = refs[:50] if len(refs) > 50 else refs
-            else:
-                minimized[field] = paper[field]
-    
-    return minimized
-
-
-def compress_all_to_single_file(input_dir: str, output_file: str, target_size_gb: float = 10.0):
-    """
-    Compress all JSON files into a single gzipped JSON file.
-    If the result exceeds target size, applies sampling.
-    """
+def get_files_with_sizes(input_dir: str) -> List[Tuple[Path, float]]:
+    """Get all JSON files with their sizes in GB, sorted by name"""
     input_path = Path(input_dir)
+    files_with_sizes = []
+    
+    for file_path in sorted(input_path.glob("papers_*.json")):
+        size_gb = get_file_size_gb(str(file_path))
+        files_with_sizes.append((file_path, size_gb))
+    
+    return files_with_sizes
+
+
+def group_files_into_bins(files_with_sizes: List[Tuple[Path, float]], max_size_gb: float) -> List[List[Path]]:
+    """
+    Group files into bins where each bin's total size is <= max_size_gb
+    Uses a simple greedy approach: add files to current bin until full, then start new bin
+    """
+    bins = []
+    current_bin = []
+    current_bin_size = 0.0
+    
+    for file_path, size_gb in files_with_sizes:
+        # If single file exceeds max size, it goes in its own bin
+        if size_gb >= max_size_gb:
+            if current_bin:
+                bins.append(current_bin)
+                current_bin = []
+                current_bin_size = 0.0
+            bins.append([file_path])
+            print(f"  {file_path.name}: {size_gb:.2f} GB -> alone (exceeds max)")
+            continue
+        
+        # If adding this file would exceed max, start new bin
+        if current_bin_size + size_gb > max_size_gb:
+            if current_bin:
+                bins.append(current_bin)
+                print(f"  Bin closed at {current_bin_size:.2f} GB")
+            current_bin = [file_path]
+            current_bin_size = size_gb
+        else:
+            current_bin.append(file_path)
+            current_bin_size += size_gb
+    
+    # Don't forget the last bin
+    if current_bin:
+        bins.append(current_bin)
+        print(f"  Final bin: {current_bin_size:.2f} GB")
+    
+    return bins
+
+
+def compress_files_to_archive(files: List[Path], output_file: str):
+    """
+    Compress multiple JSON files into a single gzipped JSON file
+    Output format: array of all papers from all files combined
+    """
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Get original size
-    print("Calculating original dataset size...")
-    original_size_gb = get_directory_size_gb(input_dir)
-    print(f"Original size: {original_size_gb:.2f} GB")
-    print(f"Target size: {target_size_gb:.2f} GB")
-    
-    # Find all JSON files sorted by year
-    json_files = sorted(input_path.glob("papers_*.json"))
-    if not json_files:
-        print("No JSON files found!")
-        return
-    
-    print(f"Found {len(json_files)} JSON files to combine and compress")
-    
-    # Estimate sampling ratio needed
-    # Gzip typically achieves 5-10x compression on JSON, let's assume 7x
-    estimated_compression_ratio = 7
-    estimated_compressed_gb = original_size_gb / estimated_compression_ratio
-    
-    sample_ratio = 1.0
-    if estimated_compressed_gb > target_size_gb:
-        sample_ratio = target_size_gb / estimated_compressed_gb
-        print(f"Estimated compressed size ({estimated_compressed_gb:.1f} GB) exceeds target.")
-        print(f"Will sample {sample_ratio:.1%} of papers to fit in {target_size_gb} GB")
-    
-    keep_every_n = max(1, int(1 / sample_ratio)) if sample_ratio < 1.0 else 1
-    
-    # Compress all files into one
-    print(f"\nCompressing all files into: {output_file}")
-    print("=" * 60)
-    
-    total_papers = 0
-    kept_papers = 0
     
     with gzip.open(output_file, 'wt', encoding='utf-8', compresslevel=COMPRESSION_LEVEL) as f_out:
         f_out.write("[\n")
         first_paper = True
+        total_papers = 0
         
-        for file_path in json_files:
-            print(f"Processing: {file_path.name}")
-            file_papers = 0
-            file_kept = 0
+        for file_path in files:
+            print(f"    Adding: {file_path.name}")
             
-            for paper in stream_json_objects(str(file_path)):
-                total_papers += 1
-                file_papers += 1
-                
-                # Apply sampling if needed
-                if sample_ratio < 1.0 and total_papers % keep_every_n != 0:
-                    continue
-                
-                # Minimize paper fields
-                paper = minimize_paper(paper)
-                
-                # Write to output
+            # Read and stream papers from this file
+            with open(file_path, 'r', encoding='utf-8') as f_in:
+                papers = json.load(f_in)
+            
+            for paper in papers:
                 if not first_paper:
                     f_out.write(",\n")
                 f_out.write(json.dumps(paper, separators=(',', ':')))
                 first_paper = False
-                kept_papers += 1
-                file_kept += 1
-                
-                if kept_papers % 100000 == 0:
-                    print(f"  Written {kept_papers:,} papers...")
-            
-            print(f"  -> {file_kept:,} / {file_papers:,} papers kept")
+                total_papers += 1
         
         f_out.write("\n]")
     
-    # Report results
-    final_size_bytes = os.path.getsize(output_file)
-    final_size_gb = final_size_bytes / (1024 ** 3)
+    return total_papers
+
+
+def compress_dataset(input_dir: str, output_dir: str, max_archive_size_gb: float):
+    """
+    Main function: groups files into bins and compresses each bin
+    """
+    print("Scanning input files...")
+    files_with_sizes = get_files_with_sizes(input_dir)
     
-    print("\n" + "=" * 60)
+    if not files_with_sizes:
+        print("No JSON files found!")
+        return
+    
+    total_size = sum(size for _, size in files_with_sizes)
+    print(f"Found {len(files_with_sizes)} files, total size: {total_size:.2f} GB")
+    print(f"Max archive size: {max_archive_size_gb} GB")
+    print()
+    
+    # Show file sizes
+    print("File sizes:")
+    for file_path, size_gb in files_with_sizes:
+        print(f"  {file_path.name}: {size_gb:.2f} GB")
+    print()
+    
+    # Group files into bins
+    print("Grouping files into archives...")
+    bins = group_files_into_bins(files_with_sizes, max_archive_size_gb)
+    print(f"\nCreated {len(bins)} archive groups")
+    print()
+    
+    # Compress each bin
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    for i, bin_files in enumerate(bins, 1):
+        # Determine output filename based on years in this bin
+        years = []
+        for f in bin_files:
+            # Extract year from filename like "papers_1980.json"
+            name = f.stem
+            if "_" in name:
+                year_part = name.split("_")[-1]
+                if year_part.isdigit():
+                    years.append(int(year_part))
+        
+        if years:
+            if len(years) == 1:
+                archive_name = f"papers_{years[0]}.json.gz"
+            else:
+                archive_name = f"papers_{min(years)}-{max(years)}.json.gz"
+        else:
+            archive_name = f"papers_archive_{i}.json.gz"
+        
+        output_file = output_path / archive_name
+        
+        bin_size = sum(get_file_size_gb(str(f)) for f in bin_files)
+        print(f"Archive {i}/{len(bins)}: {archive_name}")
+        print(f"  Files: {len(bin_files)}, Original size: {bin_size:.2f} GB")
+        
+        total_papers = compress_files_to_archive(bin_files, str(output_file))
+        
+        compressed_size_gb = get_file_size_gb(str(output_file))
+        print(f"  Compressed size: {compressed_size_gb:.2f} GB")
+        print(f"  Papers: {total_papers:,}")
+        print(f"  Compression ratio: {bin_size / compressed_size_gb:.1f}x")
+        print()
+    
+    # Summary
+    print("=" * 60)
     print("COMPRESSION COMPLETE")
     print("=" * 60)
-    print(f"Output file: {output_file}")
-    print(f"Original size: {original_size_gb:.2f} GB")
-    print(f"Compressed size: {final_size_gb:.2f} GB")
-    print(f"Compression ratio: {original_size_gb / final_size_gb:.1f}x")
-    print(f"Total papers processed: {total_papers:,}")
-    print(f"Papers in output: {kept_papers:,}")
     
-    # Check if we need to re-compress with more aggressive sampling
-    if final_size_gb > target_size_gb:
-        print(f"\nWARNING: Output ({final_size_gb:.2f} GB) exceeds target ({target_size_gb} GB)")
-        print("Re-running with more aggressive sampling...")
-        
-        # Calculate actual sampling needed
-        actual_sample_ratio = target_size_gb / final_size_gb * sample_ratio
-        os.remove(output_file)
-        
-        # Re-run with new sampling ratio
-        keep_every_n = max(1, int(1 / actual_sample_ratio))
-        print(f"New sampling: keeping every {keep_every_n}th paper")
-        
-        total_papers = 0
-        kept_papers = 0
-        
-        with gzip.open(output_file, 'wt', encoding='utf-8', compresslevel=COMPRESSION_LEVEL) as f_out:
-            f_out.write("[\n")
-            first_paper = True
-            
-            for file_path in json_files:
-                print(f"Processing: {file_path.name}")
-                
-                for paper in stream_json_objects(str(file_path)):
-                    total_papers += 1
-                    
-                    if total_papers % keep_every_n != 0:
-                        continue
-                    
-                    paper = minimize_paper(paper)
-                    
-                    if not first_paper:
-                        f_out.write(",\n")
-                    f_out.write(json.dumps(paper, separators=(',', ':')))
-                    first_paper = False
-                    kept_papers += 1
-            
-            f_out.write("\n]")
-        
-        final_size_gb = os.path.getsize(output_file) / (1024 ** 3)
-        print(f"\nFinal size after re-sampling: {final_size_gb:.2f} GB")
-        print(f"Papers in output: {kept_papers:,}")
+    total_compressed = sum(
+        get_file_size_gb(str(f)) 
+        for f in output_path.glob("*.json.gz")
+    )
+    
+    print(f"Original total: {total_size:.2f} GB")
+    print(f"Compressed total: {total_compressed:.2f} GB")
+    print(f"Number of archives: {len(bins)}")
+    print(f"Output directory: {output_dir}")
 
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("TASK 2: Compress All JSON Files Into Single Archive")
+    print("TASK 2: Compress JSON Files Into Archives (Max 10GB each)")
     print("=" * 60)
     print(f"Input directory: {INPUT_DIR}")
-    print(f"Output file: {OUTPUT_FILE}")
-    print(f"Target size: {TARGET_SIZE_GB} GB")
+    print(f"Output directory: {OUTPUT_DIR}")
+    print(f"Max archive size: {MAX_ARCHIVE_SIZE_GB} GB")
     print()
     
-    compress_all_to_single_file(INPUT_DIR, OUTPUT_FILE, TARGET_SIZE_GB)
+    compress_dataset(INPUT_DIR, OUTPUT_DIR, MAX_ARCHIVE_SIZE_GB)
