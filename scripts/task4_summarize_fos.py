@@ -12,12 +12,26 @@ import ijson
 # === CONFIGURATION ===
 INPUT_DIR = "output_filtered/modified_per_year"
 OUTPUT_FILE = "output_filtered/fos_summary.json"
+EXCLUDE_IDS_FILE = "output_filtered/fos_fill_sources/fos_from_abstract.json"
 
 def stream_json_objects(file_path: str):
     """Stream JSON objects from a large JSON array file"""
     with open(file_path, 'rb') as f:
         for obj in ijson.items(f, 'item'):
             yield obj
+
+def load_exclude_ids(exclude_file: str) -> Set[str]:
+    """Load paper IDs to exclude from fos_from_abstract.json"""
+    if not os.path.exists(exclude_file):
+        print(f"Warning: Exclude file not found: {exclude_file}")
+        return set()
+    
+    with open(exclude_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    paper_ids = set(data.get("paper_ids", []))
+    print(f"Loaded {len(paper_ids)} paper IDs to exclude")
+    return paper_ids
 
 def is_valid_fos(fos_name: str) -> bool:
     """
@@ -89,9 +103,10 @@ def normalize_fos(fos_value) -> List[str]:
     
     return []
 
-def summarize_fos(input_dir: str, output_file: str):
+def summarize_fos(input_dir: str, output_file: str, exclude_ids: Set[str]):
     """
     Extract all unique fields of study from all JSON files
+    Excludes papers whose IDs are in exclude_ids
     """
     input_path = Path(input_dir)
     
@@ -117,6 +132,12 @@ def summarize_fos(input_dir: str, output_file: str):
         file_fos_count = 0
         
         for paper in stream_json_objects(str(file_path)):
+            paper_id = paper.get("id") or paper.get("paper_id")
+            
+            # Skip papers in the exclude list
+            if paper_id and paper_id in exclude_ids:
+                continue
+            
             file_papers += 1
             
             fos_list = normalize_fos(paper.get("field_of_study"))
@@ -156,6 +177,11 @@ if __name__ == "__main__":
     print("="*60)
     print(f"Input directory: {INPUT_DIR}")
     print(f"Output file: {OUTPUT_FILE}")
+    print(f"Exclude IDs file: {EXCLUDE_IDS_FILE}")
     print()
     
-    summarize_fos(INPUT_DIR, OUTPUT_FILE)
+    # Load paper IDs to exclude
+    exclude_ids = load_exclude_ids(EXCLUDE_IDS_FILE)
+    print()
+    
+    summarize_fos(INPUT_DIR, OUTPUT_FILE, exclude_ids)
