@@ -2,15 +2,31 @@
 output/
 filtered_output/
 output_full_fos/
+public/data/nodes.jsonl
+public/data/edges.jsonl
 
-# Optional: ignore all large JSON files
-*.json
-
-# But keep configs if needed
-!package.json
-!config.json
+# Node/Next.js
+node_modules/
+/.pnp
+.pnp.js
+/.next/
+/out/
+/build
+.vercel
 
 # Python stuff
 __pycache__/
 *.pyc
 .env
+.venv
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
