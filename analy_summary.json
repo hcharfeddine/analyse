@@ -1,0 +1,459 @@
+{
+  "per_file": [
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260215_125452_1980.json",
+      "total_papers": 1346359,
+      "pdf_null_pct": 87.6,
+      "abs_null_pct": 66.9,
+      "doi_null_pct": 42.8,
+      "pub_null_pct": 32.0,
+      "auth_aff_empty_pct": 138.7,
+      "auth_cite_zero_est_pct": 32.5
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260215_125452_1981.json",
+      "total_papers": 626200,
+      "pdf_null_pct": 86.1,
+      "abs_null_pct": 53.5,
+      "doi_null_pct": 23.1,
+      "pub_null_pct": 15.2,
+      "auth_aff_empty_pct": 122.2,
+      "auth_cite_zero_est_pct": 38.5
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260215_125452_1982.json",
+      "total_papers": 1338102,
+      "pdf_null_pct": 87.0,
+      "abs_null_pct": 64.3,
+      "doi_null_pct": 38.1,
+      "pub_null_pct": 27.6,
+      "auth_aff_empty_pct": 139.9,
+      "auth_cite_zero_est_pct": 34.2
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260215_125452_1983.json",
+      "total_papers": 1388559,
+      "pdf_null_pct": 87.2,
+      "abs_null_pct": 63.5,
+      "doi_null_pct": 37.9,
+      "pub_null_pct": 27.6,
+      "auth_aff_empty_pct": 140.3,
+      "auth_cite_zero_est_pct": 34.6
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260215_125452_1984.json",
+      "total_papers": 824400,
+      "pdf_null_pct": 85.8,
+      "abs_null_pct": 53.4,
+      "doi_null_pct": 23.6,
+      "pub_null_pct": 16.7,
+      "auth_aff_empty_pct": 124.3,
+      "auth_cite_zero_est_pct": 39.0
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260215_213538_1985.json",
+      "total_papers": 1500788,
+      "pdf_null_pct": 87.0,
+      "abs_null_pct": 62.6,
+      "doi_null_pct": 37.4,
+      "pub_null_pct": 28.0,
+      "auth_aff_empty_pct": 141.5,
+      "auth_cite_zero_est_pct": 35.7
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260216_094133_1986.json",
+      "total_papers": 1581785,
+      "pdf_null_pct": 87.3,
+      "abs_null_pct": 62.7,
+      "doi_null_pct": 37.9,
+      "pub_null_pct": 28.6,
+      "auth_aff_empty_pct": 142.1,
+      "auth_cite_zero_est_pct": 35.9
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260216_094133_1987.json",
+      "total_papers": 1324999,
+      "pdf_null_pct": 87.0,
+      "abs_null_pct": 58.1,
+      "doi_null_pct": 37.2,
+      "pub_null_pct": 24.7,
+      "auth_aff_empty_pct": 142.7,
+      "auth_cite_zero_est_pct": 39.7
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260216_121538_1988.json",
+      "total_papers": 1740453,
+      "pdf_null_pct": 87.1,
+      "abs_null_pct": 61.7,
+      "doi_null_pct": 37.4,
+      "pub_null_pct": 28.5,
+      "auth_aff_empty_pct": 139.1,
+      "auth_cite_zero_est_pct": 36.9
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260216_121538_1989.json",
+      "total_papers": 1857182,
+      "pdf_null_pct": 87.1,
+      "abs_null_pct": 59.4,
+      "doi_null_pct": 38.1,
+      "pub_null_pct": 29.3,
+      "auth_aff_empty_pct": 140.5,
+      "auth_cite_zero_est_pct": 37.3
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260217_102950_1990.json",
+      "total_papers": 2000000,
+      "pdf_null_pct": 87.3,
+      "abs_null_pct": 60.5,
+      "doi_null_pct": 39.2,
+      "pub_null_pct": 31.1,
+      "auth_aff_empty_pct": 143.1,
+      "auth_cite_zero_est_pct": 37.7
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260217_102950_1991.json",
+      "total_papers": 1999999,
+      "pdf_null_pct": 87.1,
+      "abs_null_pct": 59.1,
+      "doi_null_pct": 36.9,
+      "pub_null_pct": 29.6,
+      "auth_aff_empty_pct": 139.1,
+      "auth_cite_zero_est_pct": 37.9
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260218_060712_1992.json",
+      "total_papers": 2000000,
+      "pdf_null_pct": 86.7,
+      "abs_null_pct": 58.1,
+      "doi_null_pct": 35.0,
+      "pub_null_pct": 28.8,
+      "auth_aff_empty_pct": 137.8,
+      "auth_cite_zero_est_pct": 38.7
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260218_192115_1993.json",
+      "total_papers": 1999400,
+      "pdf_null_pct": 86.4,
+      "abs_null_pct": 57.2,
+      "doi_null_pct": 34.6,
+      "pub_null_pct": 27.2,
+      "auth_aff_empty_pct": 136.0,
+      "auth_cite_zero_est_pct": 39.5
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260219_120115_1994.json",
+      "total_papers": 2314707,
+      "pdf_null_pct": 86.4,
+      "abs_null_pct": 57.7,
+      "doi_null_pct": 39.1,
+      "pub_null_pct": 31.9,
+      "auth_aff_empty_pct": 140.3,
+      "auth_cite_zero_est_pct": 39.0
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260219_120115_1995.json",
+      "total_papers": 1676399,
+      "pdf_null_pct": 85.6,
+      "abs_null_pct": 50.5,
+      "doi_null_pct": 31.6,
+      "pub_null_pct": 22.9,
+      "auth_aff_empty_pct": 134.3,
+      "auth_cite_zero_est_pct": 43.6
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260220_060040_1996.json",
+      "total_papers": 2662655,
+      "pdf_null_pct": 85.7,
+      "abs_null_pct": 58.9,
+      "doi_null_pct": 40.5,
+      "pub_null_pct": 32.9,
+      "auth_aff_empty_pct": 142.2,
+      "auth_cite_zero_est_pct": 39.7
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260220_213402_1997.json",
+      "total_papers": 1999800,
+      "pdf_null_pct": 83.8,
+      "abs_null_pct": 51.8,
+      "doi_null_pct": 35.3,
+      "pub_null_pct": 26.7,
+      "auth_aff_empty_pct": 136.5,
+      "auth_cite_zero_est_pct": 44.2
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260221_091406_1998.json",
+      "total_papers": 2939970,
+      "pdf_null_pct": 85.0,
+      "abs_null_pct": 58.3,
+      "doi_null_pct": 42.3,
+      "pub_null_pct": 34.7,
+      "auth_aff_empty_pct": 140.9,
+      "auth_cite_zero_est_pct": 40.2
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260222_091535_1999.json",
+      "total_papers": 2493800,
+      "pdf_null_pct": 84.2,
+      "abs_null_pct": 53.0,
+      "doi_null_pct": 41.4,
+      "pub_null_pct": 33.0,
+      "auth_aff_empty_pct": 137.7,
+      "auth_cite_zero_est_pct": 42.9
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260223_100943_2000.json",
+      "total_papers": 3315800,
+      "pdf_null_pct": 83.0,
+      "abs_null_pct": 54.8,
+      "doi_null_pct": 40.1,
+      "pub_null_pct": 35.4,
+      "auth_aff_empty_pct": 132.9,
+      "auth_cite_zero_est_pct": 39.0
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260225_090330_2001.json",
+      "total_papers": 2913600,
+      "pdf_null_pct": 84.3,
+      "abs_null_pct": 49.7,
+      "doi_null_pct": 45.5,
+      "pub_null_pct": 36.7,
+      "auth_aff_empty_pct": 130.4,
+      "auth_cite_zero_est_pct": 42.3
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260226_102909_2002.json",
+      "total_papers": 3456600,
+      "pdf_null_pct": 85.2,
+      "abs_null_pct": 44.1,
+      "doi_null_pct": 42.7,
+      "pub_null_pct": 43.3,
+      "auth_aff_empty_pct": 121.5,
+      "auth_cite_zero_est_pct": 42.9
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260227_112645_2003.json",
+      "total_papers": 3382600,
+      "pdf_null_pct": 83.8,
+      "abs_null_pct": 44.4,
+      "doi_null_pct": 43.6,
+      "pub_null_pct": 37.4,
+      "auth_aff_empty_pct": 117.8,
+      "auth_cite_zero_est_pct": 43.0
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260228_104349_2004.json",
+      "total_papers": 3257200,
+      "pdf_null_pct": 83.1,
+      "abs_null_pct": 40.8,
+      "doi_null_pct": 42.1,
+      "pub_null_pct": 34.9,
+      "auth_aff_empty_pct": 111.6,
+      "auth_cite_zero_est_pct": 44.3
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260301_094859_2005.json",
+      "total_papers": 2924400,
+      "pdf_null_pct": 79.8,
+      "abs_null_pct": 41.7,
+      "doi_null_pct": 32.8,
+      "pub_null_pct": 32.6,
+      "auth_aff_empty_pct": 110.2,
+      "auth_cite_zero_est_pct": 49.0
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260302_105457_2006.json",
+      "total_papers": 1999999,
+      "pdf_null_pct": 77.6,
+      "abs_null_pct": 37.4,
+      "doi_null_pct": 19.9,
+      "pub_null_pct": 22.1,
+      "auth_aff_empty_pct": 86.6,
+      "auth_cite_zero_est_pct": 56.0
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260303_103640_2007.json",
+      "total_papers": 3130400,
+      "pdf_null_pct": 77.3,
+      "abs_null_pct": 40.0,
+      "doi_null_pct": 30.1,
+      "pub_null_pct": 30.4,
+      "auth_aff_empty_pct": 104.3,
+      "auth_cite_zero_est_pct": 50.7
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260304_110236_2008.json",
+      "total_papers": 2000000,
+      "pdf_null_pct": 73.6,
+      "abs_null_pct": 35.5,
+      "doi_null_pct": 17.1,
+      "pub_null_pct": 20.5,
+      "auth_aff_empty_pct": 82.4,
+      "auth_cite_zero_est_pct": 59.8
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260305_103701_2009.json",
+      "total_papers": 1999800,
+      "pdf_null_pct": 71.8,
+      "abs_null_pct": 34.6,
+      "doi_null_pct": 14.9,
+      "pub_null_pct": 19.8,
+      "auth_aff_empty_pct": 79.1,
+      "auth_cite_zero_est_pct": 62.1
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260306_123318_2010.json",
+      "total_papers": 2315600,
+      "pdf_null_pct": 70.7,
+      "abs_null_pct": 33.9,
+      "doi_null_pct": 17.7,
+      "pub_null_pct": 22.5,
+      "auth_aff_empty_pct": 83.1,
+      "auth_cite_zero_est_pct": 61.5
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260307_103851_2011.json",
+      "total_papers": 2000000,
+      "pdf_null_pct": 68.2,
+      "abs_null_pct": 33.5,
+      "doi_null_pct": 12.0,
+      "pub_null_pct": 17.4,
+      "auth_aff_empty_pct": 71.6,
+      "auth_cite_zero_est_pct": 66.6
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260308_084802_2012.json",
+      "total_papers": 1480200,
+      "pdf_null_pct": 64.0,
+      "abs_null_pct": 34.1,
+      "doi_null_pct": 7.3,
+      "pub_null_pct": 13.0,
+      "auth_aff_empty_pct": 59.3,
+      "auth_cite_zero_est_pct": 73.6
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260309_110417_2013.json",
+      "total_papers": 5448000,
+      "pdf_null_pct": 69.1,
+      "abs_null_pct": 34.5,
+      "doi_null_pct": 35.7,
+      "pub_null_pct": 37.7,
+      "auth_aff_empty_pct": 108.1,
+      "auth_cite_zero_est_pct": 52.1
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260310_094845_2014.json",
+      "total_papers": 2000000,
+      "pdf_null_pct": 60.1,
+      "abs_null_pct": 33.3,
+      "doi_null_pct": 7.2,
+      "pub_null_pct": 14.7,
+      "auth_aff_empty_pct": 59.5,
+      "auth_cite_zero_est_pct": 74.3
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260311_113216_2015.json",
+      "total_papers": 2218860,
+      "pdf_null_pct": 57.6,
+      "abs_null_pct": 33.1,
+      "doi_null_pct": 7.5,
+      "pub_null_pct": 15.9,
+      "auth_aff_empty_pct": 63.6,
+      "auth_cite_zero_est_pct": 74.5
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260312_113556_2016.json",
+      "total_papers": 1999800,
+      "pdf_null_pct": 55.7,
+      "abs_null_pct": 34.5,
+      "doi_null_pct": 4.5,
+      "pub_null_pct": 13.1,
+      "auth_aff_empty_pct": 53.5,
+      "auth_cite_zero_est_pct": 79.4
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260313_111921_2017.json",
+      "total_papers": 1999800,
+      "pdf_null_pct": 53.6,
+      "abs_null_pct": 35.0,
+      "doi_null_pct": 3.4,
+      "pub_null_pct": 13.1,
+      "auth_aff_empty_pct": 51.3,
+      "auth_cite_zero_est_pct": 81.6
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260314_122542_2018.json",
+      "total_papers": 2632200,
+      "pdf_null_pct": 52.3,
+      "abs_null_pct": 33.5,
+      "doi_null_pct": 3.9,
+      "pub_null_pct": 17.1,
+      "auth_aff_empty_pct": 56.7,
+      "auth_cite_zero_est_pct": 78.7
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260315_130638_2019.json",
+      "total_papers": 1999800,
+      "pdf_null_pct": 49.5,
+      "abs_null_pct": 34.5,
+      "doi_null_pct": 1.7,
+      "pub_null_pct": 11.1,
+      "auth_aff_empty_pct": 46.0,
+      "auth_cite_zero_est_pct": 87.8
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260316_124219_2020.json",
+      "total_papers": 3073600,
+      "pdf_null_pct": 44.7,
+      "abs_null_pct": 31.1,
+      "doi_null_pct": 2.4,
+      "pub_null_pct": 16.4,
+      "auth_aff_empty_pct": 55.9,
+      "auth_cite_zero_est_pct": 83.7
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260317_115259_2021.json",
+      "total_papers": 2998800,
+      "pdf_null_pct": 42.0,
+      "abs_null_pct": 30.2,
+      "doi_null_pct": 1.3,
+      "pub_null_pct": 14.8,
+      "auth_aff_empty_pct": 54.8,
+      "auth_cite_zero_est_pct": 88.4
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260318_104900_2022.json",
+      "total_papers": 2182800,
+      "pdf_null_pct": 40.4,
+      "abs_null_pct": 32.1,
+      "doi_null_pct": 0.2,
+      "pub_null_pct": 9.4,
+      "auth_aff_empty_pct": 50.5,
+      "auth_cite_zero_est_pct": 97.6
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260319_132811_2023.json",
+      "total_papers": 2927400,
+      "pdf_null_pct": 38.3,
+      "abs_null_pct": 29.3,
+      "doi_null_pct": 0.1,
+      "pub_null_pct": 16.0,
+      "auth_aff_empty_pct": 50.6,
+      "auth_cite_zero_est_pct": 91.7
+    },
+    {
+      "file": "d:/Stage chine/Nouveau dossier/ACADEMIC_PAPER_COLLECTION/academic/output\\papers_20260320_134152_2024.json",
+      "total_papers": 2008200,
+      "pdf_null_pct": 40.3,
+      "abs_null_pct": 34.6,
+      "doi_null_pct": 0.0,
+      "pub_null_pct": 10.6,
+      "auth_aff_empty_pct": 51.9,
+      "auth_cite_zero_est_pct": 100
+    }
+  ],
+  "averages": {
+    "pdf_null_pct": 74.1,
+    "abs_null_pct": 46.5,
+    "doi_null_pct": 25.8
+  }
+}
