@@ -12,6 +12,7 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Any, Dict, List, Set, Iterator, Tuple
 import sys
+import gc
 
 try:
     import networkx as nx
@@ -37,7 +38,8 @@ def stream_nodes(nodes_file: Path) -> Iterator[Tuple[str, dict]]:
                     yield paper_id, node
                     
                     if (i + 1) % 100000 == 0:
-                        print(f"Streamed {i + 1} nodes...", file=sys.stderr)
+                        print(f"Streamed {i + 1} nodes ({(i + 1) * 100 / 42000000:.1f}%)...", file=sys.stderr)
+                        gc.collect()  # Force garbage collection
             except json.JSONDecodeError as e:
                 print(f"Error parsing node at line {i + 1}: {e}", file=sys.stderr)
 

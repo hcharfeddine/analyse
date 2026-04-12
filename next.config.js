@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  turbopack: {
+    resolveAlias: {
+      // Shader file handling for Turbopack
+    }
+  },
   webpack: (config, { isServer }) => {
     config.module.rules.push({
       test: /\.(glsl|vs|fs|vert|frag)$/,
