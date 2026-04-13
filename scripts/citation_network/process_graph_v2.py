@@ -7,7 +7,7 @@ For 42M+ nodes, processes entirely in streaming mode.
 import json
 from pathlib import Path
 from collections import defaultdict
-from typing import Iterator, Tuple, Dict, Set
+from typing import Iterator, Tuple, Dict, Set, List
 import sys
 import gc
 
