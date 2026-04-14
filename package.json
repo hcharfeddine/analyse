@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "extract": "python scripts/citation_network/extract_graph_data.py",
-    "process": "python scripts/citation_network/process_graph.py"
+    "process": "python scripts/citation_network/process_graph_v3.py"
   },
   "dependencies": {
     "clsx": "^2.0.0",
@@ -22,6 +22,7 @@
     "tailwindcss": "^4.0.0"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^20.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
