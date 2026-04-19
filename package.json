@@ -9,6 +9,7 @@
     "lint": "next lint",
     "extract": "python scripts/citation_network/extract_graph_data.py",
     "process": "python scripts/citation_network/process_graph_v3.py",
+    "slim": "python scripts/citation_network/slim_graph.py",
     "optimize": "python scripts/citation_network/optimize_graph.py"
   },
   "dependencies": {

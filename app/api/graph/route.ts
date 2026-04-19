@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as readline from 'readline';
 
 const DATA_FILE = path.join(process.cwd(), 'data/processed_graph.json');
+const SLIM_DATA_FILE = path.join(process.cwd(), 'data/slim_graph.json');
 
 // For large datasets, we'll read metadata from a separate lightweight file
 const METADATA_FILE = path.join(process.cwd(), 'data/metadata.json');
@@ -103,8 +104,21 @@ export async function GET(request: NextRequest) {
     }
 
     if (type === 'sample') {
-      // For initial visualization, return a small hardcoded sample
-      // This avoids loading the massive file
+      // Try to load slim graph first (if npm run slim was executed)
+      if (fs.existsSync(SLIM_DATA_FILE)) {
+        try {
+          const content = fs.readFileSync(SLIM_DATA_FILE, 'utf-8');
+          const data = JSON.parse(content);
+          return NextResponse.json({
+            ...data,
+            source: 'slim_graph'
+          });
+        } catch (err) {
+          console.warn('Could not load slim graph:', err);
+        }
+      }
+      
+      // Fallback: return hardcoded sample if slim graph doesn't exist
       return NextResponse.json({
         nodes: getSampleNodes(),
         edges: getSampleEdges(),
@@ -114,7 +128,7 @@ export async function GET(request: NextRequest) {
           total_edges: 1927517014,
           total_clusters: 2,
           sample_only: true,
-          hint: 'This is a sample for initial load. To load more data, run: npm run optimize'
+          hint: 'Run: npm run slim to create a usable version from your full dataset'
         }
       });
     }
