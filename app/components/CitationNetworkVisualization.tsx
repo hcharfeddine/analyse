@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Sigma from 'sigma';
 import { Graph } from 'graphology';
+import { GraphSkeleton, ErrorState } from './LoadingStates';
 
 interface Node {
   paper_id: string;
@@ -77,7 +78,7 @@ const CitationNetworkVisualization: React.FC<Props> = ({
         const colorMap = generateColorMap(Object.keys(data.clusters).length);
         
         data.nodes.forEach((node) => {
-          const clusterColor = colorMap[node.cluster_id] || '#999999';
+          const clusterColor = colorMap[node.cluster_id] || '#475569';
           const size = Math.log(node.cited_by_count + 1) * 3 + 5; // Log scale for size
           
           graph.addNode(node.paper_id, {
@@ -130,8 +131,11 @@ const CitationNetworkVisualization: React.FC<Props> = ({
         enableNodeDragEvents: true,
         enableNodeWheelEvents: true,
         renderEdgeLabels: false,
-        defaultNodeColor: '#999999',
-        defaultEdgeColor: 'rgba(200, 200, 200, 0.5)',
+        defaultNodeColor: '#475569',
+        defaultEdgeColor: 'rgba(255, 255, 255, 0.05)',
+        labelFont: 'Space Mono',
+        labelColor: { color: '#94a3b8' },
+        labelSize: 11,
       });
 
       sigmaRef.current = sigma;
@@ -196,86 +200,81 @@ const CitationNetworkVisualization: React.FC<Props> = ({
         }
       }
 
-      // Highlight selected paper
+      // Highlight selected paper — use graph not sigma (Sigma v3 API)
       if (selectedPaperId && nodeId === selectedPaperId) {
-        sigma.setNodeAttribute(nodeId, 'highlighted', true);
-        sigma.setNodeAttribute(nodeId, 'size', (node.size || 10) * 2);
+        graph.setNodeAttribute(nodeId, 'highlighted', true);
+        graph.setNodeAttribute(nodeId, 'size', (node.size || 10) * 2);
       } else {
-        sigma.setNodeAttribute(nodeId, 'highlighted', false);
-        sigma.setNodeAttribute(nodeId, 'size', node.data?.size || 10);
+        graph.setNodeAttribute(nodeId, 'highlighted', false);
+        graph.setNodeAttribute(nodeId, 'size', node.data?.size || 10);
       }
 
-      sigma.setNodeAttribute(nodeId, 'hidden', !visible);
+      graph.setNodeAttribute(nodeId, 'hidden', !visible);
     });
   }, [searchQuery, yearRange, selectedClusters, selectedPaperId]);
 
   // Render loading state
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center w-full h-full bg-muted/10">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted">Loading citation network...</p>
-        </div>
-      </div>
-    );
+    return <GraphSkeleton />;
   }
 
   // Render error state
   if (error) {
-    return (
-      <div className="flex items-center justify-center w-full h-full bg-red-50 dark:bg-red-950">
-        <div className="text-center p-6">
-          <h3 className="text-lg font-semibold text-red-900 dark:text-red-100 mb-2">Error</h3>
-          <p className="text-red-700 dark:text-red-200">{error}</p>
-          <p className="text-sm text-red-600 dark:text-red-300 mt-4">
-            Make sure to run the data extraction and processing scripts first.
-          </p>
-        </div>
-      </div>
-    );
+    return <ErrorState error={error} onRetry={() => window.location.reload()} />;
   }
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full flex flex-col relative">
       {/* Header with stats */}
-      <div className="border-b border-border bg-background px-4 py-3 flex justify-between items-center">
-        <div>
-          <h2 className="text-lg font-semibold">Citation Network Visualization</h2>
+      <div className="absolute top-6 left-6 right-6 z-10 pointer-events-none flex justify-between items-start">
+        <div className="bg-black/50 backdrop-blur-md border border-white/10 rounded-lg p-3 pointer-events-auto shadow-2xl">
           {stats && (
-            <p className="text-sm text-muted">
-              {stats.total_nodes?.toLocaleString() || '?'} papers •{' '}
-              {stats.total_edges?.toLocaleString() || '?'} citations •{' '}
-              {stats.total_clusters || '?'} research clusters
-            </p>
+            <div className="flex items-center gap-6">
+              <div>
+                <p className="text-[10px] text-muted uppercase tracking-widest mono-text mb-0.5">Nodes</p>
+                <p className="text-sm text-white font-medium mono-text">{stats.total_nodes?.toLocaleString() || '?'}</p>
+              </div>
+              <div className="w-px h-8 bg-white/10"></div>
+              <div>
+                <p className="text-[10px] text-muted uppercase tracking-widest mono-text mb-0.5">Edges</p>
+                <p className="text-sm text-white font-medium mono-text">{stats.total_edges?.toLocaleString() || '?'}</p>
+              </div>
+              <div className="w-px h-8 bg-white/10"></div>
+              <div>
+                <p className="text-[10px] text-muted uppercase tracking-widest mono-text mb-0.5">Clusters</p>
+                <p className="text-sm text-white font-medium mono-text">{stats.total_clusters || '?'}</p>
+              </div>
+            </div>
           )}
         </div>
       </div>
 
       {/* Visualization container */}
-      <div ref={containerRef} className="flex-1 bg-white dark:bg-gray-900" />
+      <div ref={containerRef} className="flex-1 bg-transparent" />
+      
+      {/* Subtle grid background overlay */}
+      <div className="absolute inset-0 pointer-events-none opacity-5 -z-10" 
+           style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '50px 50px' }}>
+      </div>
     </div>
   );
 };
 
-// Generate distinct colors for clusters
+// Generate distinct vibrant colors for clusters
 function generateColorMap(clusterCount: number): Record<number, string> {
   const colors = [
     '#3b82f6', // blue
-    '#ef4444', // red
-    '#10b981', // green
-    '#f59e0b', // amber
     '#8b5cf6', // purple
     '#ec4899', // pink
     '#06b6d4', // cyan
+    '#10b981', // green
+    '#f59e0b', // amber
+    '#ef4444', // red
     '#14b8a6', // teal
     '#f97316', // orange
     '#6366f1', // indigo
     '#84cc16', // lime
-    '#0d9488', // teal-600
     '#d946ef', // fuchsia
-    '#ea580c', // orange-600
-    '#7c2d12', // orange-900
   ];
 
   const colorMap: Record<number, string> = {};

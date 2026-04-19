@@ -28,53 +28,30 @@ function tryReadMetadata() {
   return null;
 }
 
-// Read nodes from processed_graph.json by streaming (to avoid loading entire file)
-async function streamNodesFromFile(page: number, limit: number) {
-  return new Promise((resolve, reject) => {
-    if (!fs.existsSync(DATA_FILE)) {
-      reject(new Error('Data file not found'));
-      return;
-    }
-
-    try {
-      // Read file in chunks to parse JSON incrementally
-      const content = fs.readFileSync(DATA_FILE, 'utf-8');
-      
-      // Only parse the first ~1MB to get metadata without crashing
-      const previewSize = Math.min(1024 * 1024, content.length);
-      const preview = content.substring(0, previewSize);
-      
-      // Extract nodes array from beginning of JSON
-      const nodesMatch = preview.match(/"nodes":\s*\[([^\]]*)/);
-      if (!nodesMatch) {
-        reject(new Error('Could not parse nodes from file'));
-        return;
-      }
-
-      // Count approximate number of nodes by looking for pattern
-      const nodePattern = /"paper_id"/g;
-      const matches = content.match(nodePattern);
-      const totalNodes = matches ? matches.length : 0;
-
-      resolve({
-        total: totalNodes,
-        page,
-        limit,
-        data: [], // Empty for now, would need full parse
-        has_more: true,
-        message: 'Use /api/graph?type=sample for initial visualization'
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
+// NOTE: Never use fs.readFileSync on the data file — it can be 150GB+.
+// Only use fs.statSync (metadata) or fs.existsSync (presence check).
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const type = searchParams.get('type') || 'sample';
 
   try {
+    // Always serve the sample without requiring the data file
+    if (type === 'sample') {
+      return NextResponse.json({
+        nodes: getSampleNodes(),
+        edges: getSampleEdges(),
+        clusters: { 0: { id: 0, size: 100 }, 1: { id: 1, size: 100 } },
+        statistics: {
+          total_nodes: 54497127,
+          total_edges: 1927517014,
+          total_clusters: 2,
+          sample_only: true,
+          hint: 'This is a sample for initial load. To load more data, run: npm run optimize'
+        }
+      });
+    }
+
     if (!fs.existsSync(DATA_FILE)) {
       return NextResponse.json(
         { 
@@ -99,23 +76,6 @@ export async function GET(request: NextRequest) {
         file_size_mb: Math.round(stats.size / 1024 / 1024),
         message: 'Data file is very large. Use ?type=sample for visualization.',
         note: 'Run: npm run optimize to create an optimized version'
-      });
-    }
-
-    if (type === 'sample') {
-      // For initial visualization, return a small hardcoded sample
-      // This avoids loading the massive file
-      return NextResponse.json({
-        nodes: getSampleNodes(),
-        edges: getSampleEdges(),
-        clusters: { 0: { id: 0, size: 100 }, 1: { id: 1, size: 100 } },
-        statistics: {
-          total_nodes: 54497127,
-          total_edges: 1927517014,
-          total_clusters: 2,
-          sample_only: true,
-          hint: 'This is a sample for initial load. To load more data, run: npm run optimize'
-        }
       });
     }
 
