@@ -20,11 +20,11 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
   const [localYearRange, setLocalYearRange] = useState(yearRange);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['year']));
 
-  // Load cluster information
+  // Load cluster information from API
   useEffect(() => {
     const loadClusters = async () => {
       try {
-        const response = await fetch('/data/processed_graph.json');
+        const response = await fetch('/api/graph?type=metadata');
         if (response.ok) {
           const data = await response.json();
           
