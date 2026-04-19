@@ -1,10 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import CitationNetworkVisualization from './components/CitationNetworkVisualization';
+import dynamic from 'next/dynamic';
 import SearchPanel from './components/SearchPanel';
 import FilterPanel from './components/FilterPanel';
 import PaperDetails from './components/PaperDetails';
+
+// Sigma uses WebGL which is only available in the browser — disable SSR
+const CitationNetworkVisualization = dynamic(
+  () => import('./components/CitationNetworkVisualization'),
+  { ssr: false }
+);
 
 export default function Home() {
   const [selectedPaper, setSelectedPaper] = useState<string | null>(null);

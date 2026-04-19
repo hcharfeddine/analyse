@@ -70,18 +70,29 @@ def count_edges_streaming(edges_file: Path) -> Tuple[Dict[str, int], Dict[str, i
 def assign_clusters_by_degree(in_degrees: Dict[str, int], out_degrees: Dict[str, int], num_clusters: int = 10) -> Dict[str, int]:
     """Assign clusters based on node degree."""
     print(f"Assigning nodes to {num_clusters} clusters by degree...", file=sys.stderr)
-    
+
+    # Pre-compute max values ONCE before the loop (not inside it)
+    max_in = max(in_degrees.values(), default=1)
+    max_out = max(out_degrees.values(), default=1)
+    max_total = max(1, max_in + max_out)
+
     cluster_map = {}
-    
-    for node_id in set(list(in_degrees.keys()) + list(out_degrees.keys())):
+
+    # Use set union instead of building two large intermediate lists
+    all_nodes = set(in_degrees.keys()) | set(out_degrees.keys())
+    total = len(all_nodes)
+    print(f"Clustering {total:,} unique nodes...", file=sys.stderr)
+
+    for i, node_id in enumerate(all_nodes):
         in_deg = in_degrees.get(node_id, 0)
         out_deg = out_degrees.get(node_id, 0)
         total_deg = in_deg + out_deg
-        
-        # Simple clustering by total degree
-        cluster_id = min(int(total_deg / max(1, (max(in_degrees.values() or [1]) + max(out_degrees.values() or [1])) / num_clusters)), num_clusters - 1)
+        cluster_id = min(int(total_deg * num_clusters / max_total), num_clusters - 1)
         cluster_map[node_id] = cluster_id
-    
+
+        if (i + 1) % 1_000_000 == 0:
+            print(f"  Clustered {i + 1:,} / {total:,} nodes...", file=sys.stderr)
+
     return cluster_map
 
 
@@ -156,31 +167,43 @@ def process_graph():
             
             gc.collect()
         
-        # Write edges
-        print("Writing edges...", file=sys.stderr)
-        out_f.write('\n], "edges": [\n')
-        
-        first_edge = True
-        edge_num = 0
+        # Write edges — cap at MAX_OUTPUT_EDGES to keep output loadable in a browser.
+        # Prioritise edges where both endpoints have high combined degree.
+        MAX_OUTPUT_EDGES = 500_000
+        print(f"Sampling up to {MAX_OUTPUT_EDGES:,} highest-degree edges for output...", file=sys.stderr)
+
+        # Score every edge by combined degree of its endpoints, keep top N
+        import heapq
+        heap = []  # min-heap of (score, source, target)
+
         with open(edges_file, 'r', encoding='utf-8') as edges_f:
             for i, line in enumerate(edges_f):
                 try:
                     edge = json.loads(line.strip())
                     source = edge.get('source')
                     target = edge.get('target')
-                    
                     if source and target:
-                        if not first_edge:
-                            out_f.write(',\n')
-                        
-                        json.dump({'source': source, 'target': target}, out_f)
-                        first_edge = False
-                        edge_num += 1
-                        
-                        if edge_num % 500000 == 0:
-                            print(f"Wrote {edge_num} edges...", file=sys.stderr)
-                except json.JSONDecodeError as e:
-                    print(f"Error at edge line {i + 1}: {e}", file=sys.stderr)
+                        score = in_degrees.get(source, 0) + out_degrees.get(source, 0) + \
+                                in_degrees.get(target, 0) + out_degrees.get(target, 0)
+                        if len(heap) < MAX_OUTPUT_EDGES:
+                            heapq.heappush(heap, (score, source, target))
+                        elif score > heap[0][0]:
+                            heapq.heapreplace(heap, (score, source, target))
+                    if (i + 1) % 10_000_000 == 0:
+                        print(f"  Scored {i + 1:,} edges...", file=sys.stderr)
+                except json.JSONDecodeError:
+                    pass
+
+        print(f"Writing {len(heap):,} sampled edges...", file=sys.stderr)
+        out_f.write('\n], "edges": [\n')
+        first_edge = True
+        edge_num = 0
+        for _score, source, target in heap:
+            if not first_edge:
+                out_f.write(',\n')
+            json.dump({'source': source, 'target': target}, out_f)
+            first_edge = False
+            edge_num += 1
         
         # Calculate cluster info
         cluster_info = defaultdict(lambda: {'id': 0, 'size': 0})

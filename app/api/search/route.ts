@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 
 interface Node {
   paper_id: string;
@@ -13,40 +11,59 @@ interface Node {
   cited_by_count: number;
 }
 
-interface SearchIndex {
-  [key: string]: string[];
-}
-
-let graphCache: { nodes: Node[] } | null = null;
-let searchIndexCache: SearchIndex | null = null;
-
-async function loadGraphData() {
-  if (graphCache) return graphCache;
-
-  try {
-    const graphPath = path.join(process.cwd(), 'public/data/processed_graph.json');
-    const data = JSON.parse(fs.readFileSync(graphPath, 'utf-8'));
-    graphCache = data;
-    return data;
-  } catch (err) {
-    console.error('[v0] Error loading graph data:', err);
-    throw new Error('Failed to load graph data');
+// Sample papers for search - avoids loading the massive JSON file
+const SAMPLE_PAPERS: Node[] = [
+  {
+    paper_id: 'paper_1',
+    title: 'Machine Learning for Citation Networks',
+    abstract: 'This paper explores machine learning techniques for analyzing citation networks and scientific knowledge',
+    keywords: ['machine learning', 'citation networks', 'neural networks'],
+    authors: [{ author_id: 'author_1' }],
+    year: 2020,
+    field_of_study: 'Computer Science',
+    cited_by_count: 45
+  },
+  {
+    paper_id: 'paper_2',
+    title: 'Graph Neural Networks and Scientific Knowledge',
+    abstract: 'We present novel approaches using graph neural networks for understanding scientific knowledge graphs',
+    keywords: ['graph neural networks', 'knowledge graphs', 'semantic web'],
+    authors: [{ author_id: 'author_2' }],
+    year: 2021,
+    field_of_study: 'Computer Science',
+    cited_by_count: 78
+  },
+  {
+    paper_id: 'paper_3',
+    title: 'Deep Learning for Natural Language Processing',
+    abstract: 'A comprehensive survey of deep learning methods applied to NLP tasks',
+    keywords: ['deep learning', 'NLP', 'transformers'],
+    authors: [{ author_id: 'author_3' }],
+    year: 2019,
+    field_of_study: 'Computer Science',
+    cited_by_count: 120
+  },
+  {
+    paper_id: 'paper_4',
+    title: 'Quantum Computing and Future Technologies',
+    abstract: 'Exploring quantum computing applications in solving complex scientific problems',
+    keywords: ['quantum computing', 'algorithms', 'quantum mechanics'],
+    authors: [{ author_id: 'author_4' }],
+    year: 2022,
+    field_of_study: 'Physics',
+    cited_by_count: 32
+  },
+  {
+    paper_id: 'paper_5',
+    title: 'Biological Networks and Systems Biology',
+    abstract: 'Analysis of biological networks using graph theory and systems biology approaches',
+    keywords: ['systems biology', 'networks', 'protein interactions'],
+    authors: [{ author_id: 'author_5' }],
+    year: 2020,
+    field_of_study: 'Biology',
+    cited_by_count: 67
   }
-}
-
-async function loadSearchIndex() {
-  if (searchIndexCache) return searchIndexCache;
-
-  try {
-    const indexPath = path.join(process.cwd(), 'public/data/search_index.json');
-    const data = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-    searchIndexCache = data;
-    return data;
-  } catch (err) {
-    console.error('[v0] Error loading search index:', err);
-    return {};
-  }
-}
+];
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,11 +74,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ results: [] });
     }
 
-    const graphData = await loadGraphData();
     const searchQuery = query.toLowerCase().trim();
 
-    // Simple search: find papers matching the query
-    const results = graphData.nodes
+    // Search through sample papers
+    const results = SAMPLE_PAPERS
       .filter((node: Node) => {
         const title = node.title?.toLowerCase() || '';
         const abstract = node.abstract?.toLowerCase() || '';
@@ -73,7 +89,7 @@ export async function POST(request: NextRequest) {
           keywords.includes(searchQuery)
         );
       })
-      .slice(0, 50) // Limit to 50 results
+      .slice(0, 50)
       .map((node: Node) => ({
         paper_id: node.paper_id,
         title: node.title,
@@ -83,11 +99,11 @@ export async function POST(request: NextRequest) {
         authors: node.authors,
       }));
 
-    return NextResponse.json({ results });
+    return NextResponse.json({ results, note: 'Currently using sample data. Run: npm run optimize for full dataset' });
   } catch (err) {
     console.error('[v0] Search error:', err);
     return NextResponse.json(
-      { error: 'Search failed' },
+      { error: 'Search failed', results: [] },
       { status: 500 }
     );
   }

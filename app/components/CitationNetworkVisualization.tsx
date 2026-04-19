@@ -56,17 +56,15 @@ const CitationNetworkVisualization: React.FC<Props> = ({
       try {
         setIsLoading(true);
         
-        // Fetch graph data
-        const response = await fetch('/data/processed_graph.json', {
-          cache: 'force-cache',
-        });
+        // Fetch graph data from API (sample to avoid memory issues)
+        const response = await fetch('/api/graph?type=sample');
         
         if (!response.ok) {
           throw new Error('Failed to load graph data');
         }
 
         const data: GraphData = await response.json();
-        console.log('[v0] Loaded graph data:', {
+        console.log('[v0] Loaded graph sample:', {
           nodes: data.nodes.length,
           edges: data.edges.length,
           clusters: Object.keys(data.clusters).length,

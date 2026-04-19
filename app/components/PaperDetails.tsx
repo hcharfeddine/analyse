@@ -45,14 +45,12 @@ const PaperDetails: React.FC<Props> = ({ paperId, onClose }) => {
         setIsLoading(true);
         setError(null);
 
-        const response = await fetch('/data/processed_graph.json');
-        if (!response.ok) throw new Error('Failed to load graph data');
+        const response = await fetch(`/api/paper/${paperId}`);
+        if (!response.ok) throw new Error('Failed to load paper data');
 
         const data = await response.json();
-        const foundPaper = data.nodes.find((n: PaperData) => n.paper_id === paperId);
-
-        if (foundPaper) {
-          setPaper(foundPaper);
+        if (data.paper) {
+          setPaper(data.paper);
         } else {
           setError('Paper not found');
         }
