@@ -3,10 +3,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 
-const DATA_FILE = path.join(process.cwd(), 'public/data/processed_graph.json');
+const DATA_FILE = path.join(process.cwd(), 'data/processed_graph.json');
 
 // For large datasets, we'll read metadata from a separate lightweight file
-const METADATA_FILE = path.join(process.cwd(), 'public/data/metadata.json');
+const METADATA_FILE = path.join(process.cwd(), 'data/metadata.json');
 
 interface GraphData {
   nodes: Array<{ paper_id: string; [key: string]: any }>;
