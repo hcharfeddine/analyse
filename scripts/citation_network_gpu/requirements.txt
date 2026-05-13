@@ -1,0 +1,39 @@
+# GPU Citation Network Pipeline — Requirements
+# Python 3.9+ | CUDA 12.x (RTX 4090)
+#
+# Install order matters — do CUDA packages first:
+#
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+#   pip install cupy-cuda12x
+#   pip install --extra-index-url=https://pypi.nvidia.com cugraph-cu12 cuml-cu12
+#   pip install -r requirements.txt
+
+# ── Fast JSON parsing (5-10x faster than stdlib) ──────────────────────────────
+orjson>=3.9.0
+
+# ── PyTorch (CUDA 12.1 — matches RTX 4090) ────────────────────────────────────
+# Install separately:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.1.0
+
+# ── GPU graph processing (RAPIDS) ─────────────────────────────────────────────
+# Install separately (requires NVIDIA pip index):
+#   pip install --extra-index-url=https://pypi.nvidia.com cugraph-cu12 cuml-cu12
+# cupy-cuda12x>=12.0.0     # GPU arrays
+# cugraph-cu12>=24.2.0     # GPU graph algorithms (Louvain, ForceAtlas2)
+# cuml-cu12>=24.2.0        # GPU ML
+
+# ── CPU fallback graph libraries ──────────────────────────────────────────────
+igraph>=0.11.0              # CPU layout (DRL algorithm) — fast multi-threaded
+python-louvain>=0.16        # CPU Louvain community detection
+networkx>=3.2               # Graph utilities and fallback
+
+# ── Scientific computing ──────────────────────────────────────────────────────
+numpy>=1.24.0
+scipy>=1.11.0
+pandas>=2.0.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+tqdm>=4.66.0                # Progress bars
+psutil>=5.9.0               # Memory monitoring
+nvidia-ml-py3>=7.352.0      # nvidia-smi in Python (GPU monitoring)
