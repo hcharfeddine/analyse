@@ -5,8 +5,9 @@ import * as readline from 'readline';
 
 const DATA_FILE = path.join(process.cwd(), 'data/processed_graph.json');
 
-// For large datasets, we'll read metadata from a separate lightweight file
 const METADATA_FILE = path.join(process.cwd(), 'data/metadata.json');
+const SUMMARY_FILE = path.join(process.cwd(), 'filtered_papers_summary.json');
+const PREVIEW_FILE = path.join(process.cwd(), 'public/data/graph_preview.json');
 
 interface GraphData {
   nodes: Array<{ paper_id: string; [key: string]: any }>;
@@ -28,38 +29,75 @@ function tryReadMetadata() {
   return null;
 }
 
-// NOTE: Never use fs.readFileSync on the data file — it can be 150GB+.
-// Only use fs.statSync (metadata) or fs.existsSync (presence check).
+function getSummaryGraph() {
+  const content = fs.readFileSync(SUMMARY_FILE, 'utf-8');
+  const summary = JSON.parse(content);
+  const distribution = summary.distribution_per_year || {};
+  const years = Object.keys(distribution).map(Number).sort((a, b) => a - b);
+  const minCount = Math.min(...years.map((year) => distribution[String(year)]));
+  const maxCount = Math.max(...years.map((year) => distribution[String(year)]));
+
+  const nodes = years.map((year) => {
+    const count = distribution[String(year)];
+    const normalized = maxCount === minCount ? 1 : (count - minCount) / (maxCount - minCount);
+    return {
+      paper_id: `year_${year}`,
+      title: `${count.toLocaleString()} papers published in ${year}`,
+      year,
+      cited_by_count: count,
+      field_of_study: 'All fields',
+      cluster_id: Math.floor((year - years[0]) / 5),
+      in_degree: year === years[0] ? 0 : 1,
+      out_degree: year === years[years.length - 1] ? 0 : 1,
+      keywords: ['yearly distribution', 'filtered papers'],
+      abstract: `This node represents all ${count.toLocaleString()} filtered papers available in the project summary for ${year}. Individual paper records are not included in this Replit workspace yet.`,
+      x: (year - years[0]) * 8,
+      y: (0.5 - normalized) * 80
+    };
+  });
+
+  const edges = years.slice(1).map((year, index) => ({
+    source: `year_${years[index]}`,
+    target: `year_${year}`
+  }));
+
+  const clusters = years.reduce((acc: { [key: string]: any }, year) => {
+    const clusterId = Math.floor((year - years[0]) / 5);
+    acc[String(clusterId)] = acc[String(clusterId)] || { id: clusterId, size: 0 };
+    acc[String(clusterId)].size += 1;
+    return acc;
+  }, {});
+
+  return {
+    nodes,
+    edges,
+    clusters,
+    statistics: {
+      total_nodes: summary.total_filtered_papers,
+      total_edges: edges.length,
+      total_clusters: Object.keys(clusters).length,
+      visible_nodes: nodes.length,
+      source: 'filtered_papers_summary.json',
+      note: 'Showing all available summary data grouped by year. Upload or generate public/data/processed_graph.json to visualize individual papers.'
+    }
+  };
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const type = searchParams.get('type') || 'sample';
+  const type = searchParams.get('type') || 'graph';
 
   try {
-    // Always serve the sample without requiring the data file
+    if ((type === 'graph' || type === 'sample') && fs.existsSync(PREVIEW_FILE)) {
+      return NextResponse.json(JSON.parse(fs.readFileSync(PREVIEW_FILE, 'utf-8')));
+    }
+
     if (type === 'sample') {
-      return NextResponse.json({
-        nodes: getSampleNodes(),
-        edges: getSampleEdges(),
-        clusters: { 0: { id: 0, size: 100 }, 1: { id: 1, size: 100 } },
-        statistics: {
-          total_nodes: 54497127,
-          total_edges: 1927517014,
-          total_clusters: 2,
-          sample_only: true,
-          hint: 'This is a sample for initial load. To load more data, run: npm run optimize'
-        }
-      });
+      return NextResponse.json(getSummaryGraph());
     }
 
     if (!fs.existsSync(DATA_FILE)) {
-      return NextResponse.json(
-        { 
-          error: 'Data file not found. Run npm run process first.',
-          hint: 'Execute: npm run process'
-        },
-        { status: 404 }
-      );
+      return NextResponse.json(getSummaryGraph());
     }
 
     // Try to use lightweight metadata file first
@@ -96,7 +134,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ 
       error: 'Invalid type parameter',
-      valid_types: ['sample', 'metadata', 'info']
+      valid_types: ['graph', 'sample', 'metadata', 'info']
     }, { status: 400 });
 
   } catch (error) {
@@ -106,26 +144,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// Return a small sample of nodes
-function getSampleNodes() {
-  return [
-    { paper_id: 'paper_1', title: 'Sample Paper 1', year: 2020, in_degree: 5, out_degree: 3, cluster_id: 0 },
-    { paper_id: 'paper_2', title: 'Sample Paper 2', year: 2021, in_degree: 8, out_degree: 2, cluster_id: 1 },
-    { paper_id: 'paper_3', title: 'Sample Paper 3', year: 2022, in_degree: 3, out_degree: 7, cluster_id: 0 },
-    { paper_id: 'paper_4', title: 'Sample Paper 4', year: 2023, in_degree: 12, out_degree: 4, cluster_id: 1 },
-    { paper_id: 'paper_5', title: 'Sample Paper 5', year: 2023, in_degree: 6, out_degree: 5, cluster_id: 0 },
-  ];
-}
-
-// Return sample edges
-function getSampleEdges() {
-  return [
-    { source: 'paper_1', target: 'paper_2' },
-    { source: 'paper_2', target: 'paper_3' },
-    { source: 'paper_3', target: 'paper_1' },
-    { source: 'paper_4', target: 'paper_5' },
-    { source: 'paper_5', target: 'paper_2' },
-  ];
 }

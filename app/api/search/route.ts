@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface Node {
   paper_id: string;
@@ -11,59 +13,29 @@ interface Node {
   cited_by_count: number;
 }
 
-// Sample papers for search - avoids loading the massive JSON file
-const SAMPLE_PAPERS: Node[] = [
-  {
-    paper_id: 'paper_1',
-    title: 'Machine Learning for Citation Networks',
-    abstract: 'This paper explores machine learning techniques for analyzing citation networks and scientific knowledge',
-    keywords: ['machine learning', 'citation networks', 'neural networks'],
-    authors: [{ author_id: 'author_1' }],
-    year: 2020,
-    field_of_study: 'Computer Science',
-    cited_by_count: 45
-  },
-  {
-    paper_id: 'paper_2',
-    title: 'Graph Neural Networks and Scientific Knowledge',
-    abstract: 'We present novel approaches using graph neural networks for understanding scientific knowledge graphs',
-    keywords: ['graph neural networks', 'knowledge graphs', 'semantic web'],
-    authors: [{ author_id: 'author_2' }],
-    year: 2021,
-    field_of_study: 'Computer Science',
-    cited_by_count: 78
-  },
-  {
-    paper_id: 'paper_3',
-    title: 'Deep Learning for Natural Language Processing',
-    abstract: 'A comprehensive survey of deep learning methods applied to NLP tasks',
-    keywords: ['deep learning', 'NLP', 'transformers'],
-    authors: [{ author_id: 'author_3' }],
-    year: 2019,
-    field_of_study: 'Computer Science',
-    cited_by_count: 120
-  },
-  {
-    paper_id: 'paper_4',
-    title: 'Quantum Computing and Future Technologies',
-    abstract: 'Exploring quantum computing applications in solving complex scientific problems',
-    keywords: ['quantum computing', 'algorithms', 'quantum mechanics'],
-    authors: [{ author_id: 'author_4' }],
-    year: 2022,
-    field_of_study: 'Physics',
-    cited_by_count: 32
-  },
-  {
-    paper_id: 'paper_5',
-    title: 'Biological Networks and Systems Biology',
-    abstract: 'Analysis of biological networks using graph theory and systems biology approaches',
-    keywords: ['systems biology', 'networks', 'protein interactions'],
-    authors: [{ author_id: 'author_5' }],
-    year: 2020,
-    field_of_study: 'Biology',
-    cited_by_count: 67
+const SUMMARY_FILE = path.join(process.cwd(), 'filtered_papers_summary.json');
+const PREVIEW_FILE = path.join(process.cwd(), 'public/data/graph_preview.json');
+
+function loadSearchNodes(): Node[] {
+  if (fs.existsSync(PREVIEW_FILE)) {
+    const preview = JSON.parse(fs.readFileSync(PREVIEW_FILE, 'utf-8'));
+    return preview.nodes || [];
   }
-];
+
+  const content = fs.readFileSync(SUMMARY_FILE, 'utf-8');
+  const summary = JSON.parse(content);
+  const distribution = summary.distribution_per_year || {};
+  return Object.keys(distribution).map((year) => ({
+    paper_id: `year_${year}`,
+    title: `${Number(distribution[year]).toLocaleString()} papers published in ${year}`,
+    abstract: `Summary record for all filtered papers available in ${year}.`,
+    keywords: ['yearly distribution', 'filtered papers'],
+    authors: [],
+    year: Number(year),
+    field_of_study: 'All fields',
+    cited_by_count: Number(distribution[year])
+  }));
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -76,8 +48,7 @@ export async function POST(request: NextRequest) {
 
     const searchQuery = query.toLowerCase().trim();
 
-    // Search through sample papers
-    const results = SAMPLE_PAPERS
+    const results = loadSearchNodes()
       .filter((node: Node) => {
         const title = node.title?.toLowerCase() || '';
         const abstract = node.abstract?.toLowerCase() || '';
@@ -99,7 +70,7 @@ export async function POST(request: NextRequest) {
         authors: node.authors,
       }));
 
-    return NextResponse.json({ results, note: 'Currently using sample data. Run: npm run optimize for full dataset' });
+    return NextResponse.json({ results, note: fs.existsSync(PREVIEW_FILE) ? 'Searching indexed preview data.' : 'Searching available year-level summary data. Individual paper search requires processed graph data.' });
   } catch (err) {
     console.error('[v0] Search error:', err);
     return NextResponse.json(

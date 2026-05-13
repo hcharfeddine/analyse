@@ -12,11 +12,17 @@ const CitationNetworkVisualization = dynamic(
   { ssr: false }
 );
 
+const CitationMapView = dynamic(
+  () => import('./components/CitationMapView'),
+  { ssr: false }
+);
+
 export default function Home() {
   const [selectedPaper, setSelectedPaper] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [yearRange, setYearRange] = useState<[number, number]>([1900, 2024]);
   const [selectedClusters, setSelectedClusters] = useState<number[]>([]);
+  const [viewMode, setViewMode] = useState<'network' | 'map'>('network');
 
   return (
     <main className="flex h-screen w-full overflow-hidden bg-background text-foreground">
@@ -55,13 +61,38 @@ export default function Home() {
 
       {/* Main Visualization Area */}
       <div className="flex-1 flex flex-col relative bg-[#02040a]">
-        <CitationNetworkVisualization
-          selectedPaperId={selectedPaper}
-          onSelectPaper={setSelectedPaper}
-          searchQuery={searchQuery}
-          yearRange={yearRange}
-          selectedClusters={selectedClusters}
-        />
+        <div className="absolute top-6 right-6 z-[500] flex bg-black/60 backdrop-blur-md border border-white/10 rounded-lg overflow-hidden shadow-2xl">
+          <button
+            onClick={() => setViewMode('network')}
+            className={`px-3 py-1.5 text-xs uppercase tracking-widest mono-text transition ${
+              viewMode === 'network' ? 'bg-white/10 text-white' : 'text-muted hover:text-white'
+            }`}
+          >
+            Network
+          </button>
+          <button
+            onClick={() => setViewMode('map')}
+            className={`px-3 py-1.5 text-xs uppercase tracking-widest mono-text transition ${
+              viewMode === 'map' ? 'bg-white/10 text-white' : 'text-muted hover:text-white'
+            }`}
+          >
+            Map (54M)
+          </button>
+        </div>
+        {viewMode === 'network' ? (
+          <CitationNetworkVisualization
+            selectedPaperId={selectedPaper}
+            onSelectPaper={setSelectedPaper}
+            searchQuery={searchQuery}
+            yearRange={yearRange}
+            selectedClusters={selectedClusters}
+          />
+        ) : (
+          <CitationMapView
+            selectedPaperId={selectedPaper}
+            onSelectPaper={setSelectedPaper}
+          />
+        )}
       </div>
 
       {/* Right Sidebar - Paper Details */}

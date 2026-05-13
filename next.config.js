@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  allowedDevOrigins: ['*.spock.replit.dev', '*.replit.dev'],
   turbopack: {
     resolveAlias: {
       // Shader file handling for Turbopack

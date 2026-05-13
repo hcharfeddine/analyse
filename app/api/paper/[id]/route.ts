@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const SUMMARY_FILE = path.join(process.cwd(), 'filtered_papers_summary.json');
+const PREVIEW_FILE = path.join(process.cwd(), 'public/data/graph_preview.json');
 
 export async function GET(
   request: NextRequest,
@@ -7,105 +12,51 @@ export async function GET(
   const { id: paperId } = await params;
 
   try {
-    const samplePapers: { [key: string]: any } = {
-      'paper_1': {
-        paper_id: 'paper_1',
-        title: 'Machine Learning for Citation Networks',
-        authors: [{ author_id: 'author_1', affiliations: ['MIT'], countries: ['USA'], organization_types: ['University'], citation_count: 150 }],
-        year: 2020,
-        cited_by_count: 45,
-        doi: '10.1234/example.1',
-        publisher: 'ACM',
-        abstract: 'This paper explores machine learning techniques for analyzing citation networks and scientific knowledge graphs.',
-        publication_type: 'conference',
-        journal_name: 'ICML 2020',
-        venue: 'International Conference on Machine Learning',
-        field_of_study: 'Computer Science',
-        keywords: ['machine learning', 'citation networks', 'neural networks'],
-        pdf_url: 'https://example.com/paper.pdf',
-        in_degree: 5,
-        out_degree: 3,
-        cluster_id: 0
-      },
-      'paper_2': {
-        paper_id: 'paper_2',
-        title: 'Graph Neural Networks and Scientific Knowledge',
-        authors: [{ author_id: 'author_2', affiliations: ['Stanford University'], countries: ['USA'], organization_types: ['University'], citation_count: 200 }],
-        year: 2021,
-        cited_by_count: 78,
-        doi: '10.1234/example.2',
-        publisher: 'IEEE',
-        abstract: 'We present novel approaches using graph neural networks for understanding scientific knowledge and paper relationships.',
-        publication_type: 'journal',
-        journal_name: 'Nature Machine Intelligence',
-        venue: 'Nature Machine Intelligence',
-        field_of_study: 'Computer Science',
-        keywords: ['graph neural networks', 'knowledge graphs', 'semantic web'],
-        pdf_url: 'https://example.com/paper2.pdf',
-        in_degree: 8,
-        out_degree: 2,
-        cluster_id: 1
-      },
-      'paper_3': {
-        paper_id: 'paper_3',
-        title: 'Deep Learning for Natural Language Processing',
-        authors: [{ author_id: 'author_3', affiliations: ['CMU'], countries: ['USA'], organization_types: ['University'], citation_count: 300 }],
-        year: 2019,
-        cited_by_count: 120,
-        doi: '10.1234/example.3',
-        publisher: 'ACL',
-        abstract: 'A comprehensive survey of deep learning methods applied to NLP tasks and benchmarks.',
-        publication_type: 'conference',
-        journal_name: 'ACL 2019',
-        venue: 'Association for Computational Linguistics',
-        field_of_study: 'Computer Science',
-        keywords: ['deep learning', 'NLP', 'transformers'],
-        pdf_url: '',
-        in_degree: 3,
-        out_degree: 7,
-        cluster_id: 0
-      },
-      'paper_4': {
-        paper_id: 'paper_4',
-        title: 'Quantum Computing and Future Technologies',
-        authors: [{ author_id: 'author_4', affiliations: ['Caltech'], countries: ['USA'], organization_types: ['University'], citation_count: 90 }],
-        year: 2022,
-        cited_by_count: 32,
-        doi: '10.1234/example.4',
-        publisher: 'Nature',
-        abstract: 'Exploring quantum computing applications in solving complex scientific problems.',
-        publication_type: 'journal',
-        journal_name: 'Nature Physics',
-        venue: 'Nature Physics',
-        field_of_study: 'Physics',
-        keywords: ['quantum computing', 'algorithms', 'quantum mechanics'],
-        pdf_url: '',
-        in_degree: 12,
-        out_degree: 4,
-        cluster_id: 1
-      },
-      'paper_5': {
-        paper_id: 'paper_5',
-        title: 'Biological Networks and Systems Biology',
-        authors: [{ author_id: 'author_5', affiliations: ['Harvard'], countries: ['USA'], organization_types: ['University'], citation_count: 110 }],
-        year: 2020,
-        cited_by_count: 67,
-        doi: '10.1234/example.5',
-        publisher: 'Cell Press',
-        abstract: 'Analysis of biological networks using graph theory and systems biology approaches.',
-        publication_type: 'journal',
-        journal_name: 'Cell Systems',
-        venue: 'Cell Systems',
-        field_of_study: 'Biology',
-        keywords: ['systems biology', 'networks', 'protein interactions'],
-        pdf_url: '',
-        in_degree: 6,
-        out_degree: 5,
-        cluster_id: 0
+    if (fs.existsSync(PREVIEW_FILE)) {
+      const preview = JSON.parse(fs.readFileSync(PREVIEW_FILE, 'utf-8'));
+      const previewPaper = (preview.nodes || []).find((node: any) => node.paper_id === paperId);
+      if (previewPaper) {
+        return NextResponse.json({
+          paper: {
+            authors: [],
+            doi: '',
+            publisher: '',
+            publication_type: 'paper',
+            journal_name: '',
+            venue: '',
+            pdf_url: '',
+            ...previewPaper,
+            keywords: previewPaper.keywords || [],
+            abstract: previewPaper.abstract || 'This paper is from the generated preview index. Full details can be queried from graph_index.db.'
+          }
+        });
       }
-    };
+    }
 
-    const paper = samplePapers[paperId];
+    const yearMatch = paperId.match(/^year_(\d{4})$/);
+    const summary = JSON.parse(fs.readFileSync(SUMMARY_FILE, 'utf-8'));
+    const distribution = summary.distribution_per_year || {};
+    const year = yearMatch?.[1];
+    const count = year ? distribution[year] : null;
+    const paper = year && count ? {
+      paper_id: paperId,
+      title: `${Number(count).toLocaleString()} papers published in ${year}`,
+      authors: [],
+      year: Number(year),
+      cited_by_count: Number(count),
+      doi: '',
+      publisher: '',
+      abstract: `This is a year-level summary node representing all filtered papers available for ${year}. The project currently contains summary data, not the individual paper records needed to inspect one specific paper.`,
+      publication_type: 'summary',
+      journal_name: '',
+      venue: 'Project summary dataset',
+      field_of_study: 'All fields',
+      keywords: ['yearly distribution', 'filtered papers'],
+      pdf_url: '',
+      in_degree: Number(year) > 1980 ? 1 : 0,
+      out_degree: Number(year) < 2024 ? 1 : 0,
+      cluster_id: Math.floor((Number(year) - 1980) / 5)
+    } : null;
 
     if (paper) {
       return NextResponse.json({ paper });
