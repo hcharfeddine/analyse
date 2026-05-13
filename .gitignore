@@ -1,33 +1,161 @@
-# Ignore data/output folders
-output/
-filtered_output/
-output_full_fos/
-output_filtered/
+# ============================================================
+# CITATION NETWORK GPU PIPELINE - GITIGNORE
+# ============================================================
+# Only keep code related to citation network GPU pipeline
+# and web visualization. All other scripts have been removed.
+
+# ============================================================
+# Generated Data & Outputs (GPU Pipeline)
+# ============================================================
+# Large GPU processing outputs - do NOT commit
+public/data/citation_network.db
+public/data/graph_data.json
+public/data/graph_data.jsonl
 public/data/nodes.jsonl
 public/data/edges.jsonl
+public/data/graph_cache/
+public/data/tiles/
+
+# Input data directories - DO NOT commit raw academic papers
+D:\Stage\ chine\Nouveau\ dossier\ACADEMIC_PAPER_COLLECTION\
 data/
-# Node/Next.js
+output/
+output_full_fos/
+output_filtered/
+filtered_output/
+
+# ============================================================
+# Python - GPU Pipeline & Dependencies
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# GPU/CUDA specific
+*.o
+*.a
+*.la
+*.lo
+*.so.*
+cuda_arch_best_guess.txt
+
+# ============================================================
+# Node.js / Next.js - Web Visualization
+# ============================================================
 node_modules/
 /.pnp
 .pnp.js
 /.next/
 /out/
-/build
+/build/
+dist/
 .vercel
+.vercel_build_output
 
-# Python stuff
-__pycache__/
-*.pyc
+# ============================================================
+# Environment & Secrets
+# ============================================================
 .env
-.venv
-venv/
-env/
+.env.local
+.env.*.local
+.env.production.local
+.env.development.local
+.env.test.local
 
-# IDE
+# ============================================================
+# IDE & Editor
+# ============================================================
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
+*~
 .DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+.vim
+.sublime-text
+
+# ============================================================
+# OS
+# ============================================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ============================================================
+# Debugging & Logs
+# ============================================================
+*.log
+*.logs
+debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ============================================================
+# Testing
+# ============================================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ============================================================
+# Misc
+# ============================================================
+*.tmp
+.cache/
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+*.bak
+*.backup
+
+# ============================================================
+# GPU Pipeline Checkpoints (Keep locally, don't commit)
+# ============================================================
+checkpoints/
+*.ckpt
+*.checkpoint
+
+# ============================================================
+# KEEP THESE (Citation Network Code)
+# ============================================================
+# scripts/citation_network_gpu/        ✓ Keep (GPU pipeline)
+# scripts/__init__.py                   ✓ Keep (package file)
+# deprecated/                           ✓ Keep (for reference)
+# app/                                  ✓ Keep (web app)
+# lib/graph_loader.ts                   ✓ Keep (web utilities)
+# public/                               ✓ Keep (but outputs excluded above)
