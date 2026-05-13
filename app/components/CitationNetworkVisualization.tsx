@@ -69,7 +69,7 @@ const CitationNetworkVisualization: React.FC<Props> = ({
 
         const data: GraphData = await response.json();
         setGraphData(data);
-        console.log('[v0] Loaded graph sample:', {
+        console.log('Loaded graph sample:', {
           nodes: data.nodes.length,
           edges: data.edges.length,
           clusters: Object.keys(data.clusters).length,
@@ -141,7 +141,7 @@ const CitationNetworkVisualization: React.FC<Props> = ({
         setIsLoading(false);
         setError(null);
       } catch (err) {
-        console.error('[v0] Error loading graph:', err);
+        console.error('Error loading graph:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');
         setIsLoading(false);
       }
@@ -188,9 +188,9 @@ const CitationNetworkVisualization: React.FC<Props> = ({
         // onSelectPaper(null); // Optional: uncomment to deselect on canvas click
       });
 
-      console.log('[v0] Sigma initialized with', graphRef.current.order, 'nodes');
+      console.log('Sigma initialized with', graphRef.current.order, 'nodes');
     } catch (err) {
-      console.error('[v0] Error initializing Sigma:', err);
+      console.error('Error initializing Sigma:', err);
       setUseFallbackRenderer(true);
       setError(null);
     }

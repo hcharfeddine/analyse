@@ -55,7 +55,7 @@ const PaperDetails: React.FC<Props> = ({ paperId, onClose }) => {
           setError('Paper not found');
         }
       } catch (err) {
-        console.error('[v0] Error loading paper:', err);
+        console.error('Error loading paper:', err);
         setError('Failed to load paper details');
       } finally {
         setIsLoading(false);

@@ -46,7 +46,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
           }
         }
       } catch (err) {
-        console.error('[v0] Error loading clusters:', err);
+        console.error('Error loading clusters:', err);
       }
     };
 

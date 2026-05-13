@@ -50,7 +50,7 @@ function getSummaryGraph() {
       in_degree: year === years[0] ? 0 : 1,
       out_degree: year === years[years.length - 1] ? 0 : 1,
       keywords: ['yearly distribution', 'filtered papers'],
-      abstract: `This node represents all ${count.toLocaleString()} filtered papers available in the project summary for ${year}. Individual paper records are not included in this Replit workspace yet.`,
+      abstract: `This node represents all ${count.toLocaleString()} filtered papers available in the project summary for ${year}. Individual paper records are not included in this workspace yet.`,
       x: (year - years[0]) * 8,
       y: (0.5 - normalized) * 80
     };

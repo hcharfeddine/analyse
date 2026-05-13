@@ -53,7 +53,7 @@ const SearchPanel: React.FC<Props> = ({ onSearch, onSelectPaper }) => {
         setShowResults(true);
       }
     } catch (err) {
-      console.error('[v0] Search error:', err);
+      console.error('Search error:', err);
     } finally {
       setIsSearching(false);
     }

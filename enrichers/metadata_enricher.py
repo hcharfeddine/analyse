@@ -115,13 +115,13 @@ class ComprehensiveMetadataEnricher:
                 try:
                     paper = await self.crossref_client.enrich_paper(paper)
                     if paper.references and len(paper.references) > 0:
-                        logger.debug(f"[v0] Paper {paper.paper_id} now has {len(paper.references)} references")
+                        logger.debug(f"Paper {paper.paper_id} now has {len(paper.references)} references")
                 except Exception as e:
                     logger.debug(f"CrossRef enrichment failed for {paper.paper_id}: {e}")
             return paper
         
         logger.info("Phase 1: CrossRef enrichment...")
-        logger.info(f"[v0] CrossRef enrichment: {len(needs_crossref)} papers to enrich, USE_CROSSREF={config.USE_CROSSREF}")
+        logger.info(f"CrossRef enrichment: {len(needs_crossref)} papers to enrich, USE_CROSSREF={config.USE_CROSSREF}")
         crossref_tasks = [enrich_crossref(p) for p in needs_crossref]
         papers = await asyncio.gather(*crossref_tasks)
         papers_with_refs = sum(1 for p in papers if p.references and len(p.references) > 0)

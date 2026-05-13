@@ -107,7 +107,7 @@ Next.js + Sigma.js Visualization
 ## Project Structure
 
 ```
-/vercel/share/v0-project/
+
 ├── app/
 │   ├── api/
 │   │   └── search/

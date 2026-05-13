@@ -21,12 +21,12 @@ let searchIndexCache: SearchIndex | null = null;
  */
 export async function loadGraphData(): Promise<GraphData> {
   if (graphCache) {
-    console.log('[v0] Using cached graph data');
+    console.log('Using cached graph data');
     return graphCache;
   }
 
   try {
-    console.log('[v0] Fetching graph data...');
+    console.log('Fetching graph data...');
     const response = await fetch('/data/processed_graph.json', {
       cache: 'force-cache',
     });
@@ -36,14 +36,14 @@ export async function loadGraphData(): Promise<GraphData> {
     }
 
     graphCache = await response.json();
-    console.log('[v0] Graph data loaded:', {
+    console.log('Graph data loaded:', {
       nodes: graphCache.nodes.length,
       edges: graphCache.edges.length,
     });
 
     return graphCache;
   } catch (error) {
-    console.error('[v0] Error loading graph data:', error);
+    console.error('Error loading graph data:', error);
     throw error;
   }
 }
@@ -53,27 +53,27 @@ export async function loadGraphData(): Promise<GraphData> {
  */
 export async function loadSearchIndex(): Promise<SearchIndex> {
   if (searchIndexCache) {
-    console.log('[v0] Using cached search index');
+    console.log('Using cached search index');
     return searchIndexCache;
   }
 
   try {
-    console.log('[v0] Fetching search index...');
+    console.log('Fetching search index...');
     const response = await fetch('/data/search_index.json', {
       cache: 'force-cache',
     });
 
     if (!response.ok) {
-      console.warn('[v0] Search index not available');
+      console.warn('Search index not available');
       return {};
     }
 
     searchIndexCache = await response.json();
-    console.log('[v0] Search index loaded');
+    console.log('Search index loaded');
 
     return searchIndexCache;
   } catch (error) {
-    console.error('[v0] Error loading search index:', error);
+    console.error('Error loading search index:', error);
     return {};
   }
 }
@@ -84,7 +84,7 @@ export async function loadSearchIndex(): Promise<SearchIndex> {
 export function clearCache(): void {
   graphCache = null;
   searchIndexCache = null;
-  console.log('[v0] Cache cleared');
+  console.log('Cache cleared');
 }
 
 /**
@@ -95,7 +95,7 @@ export async function getPaperById(paperId: string): Promise<any | null> {
     const graphData = await loadGraphData();
     return graphData.nodes.find((node) => node.paper_id === paperId) || null;
   } catch (error) {
-    console.error('[v0] Error getting paper:', error);
+    console.error('Error getting paper:', error);
     return null;
   }
 }
@@ -131,11 +131,11 @@ export async function searchPapers(
       })
       .slice(0, limit);
 
-    console.log(`[v0] Search found ${results.length} results for "${query}"`);
+    console.log(`Search found ${results.length} results for "${query}"`);
 
     return results;
   } catch (error) {
-    console.error('[v0] Error searching papers:', error);
+    console.error('Error searching papers:', error);
     return [];
   }
 }
@@ -148,7 +148,7 @@ export async function getPapersByCluster(clusterId: number): Promise<any[]> {
     const graphData = await loadGraphData();
     return graphData.nodes.filter((node) => node.cluster_id === clusterId);
   } catch (error) {
-    console.error('[v0] Error getting papers by cluster:', error);
+    console.error('Error getting papers by cluster:', error);
     return [];
   }
 }
@@ -166,7 +166,7 @@ export async function getPapersByYear(
       (node) => node.year >= minYear && node.year <= maxYear
     );
   } catch (error) {
-    console.error('[v0] Error getting papers by year:', error);
+    console.error('Error getting papers by year:', error);
     return [];
   }
 }
@@ -211,7 +211,7 @@ export async function getCitationGraph(
       cited: cited.slice(0, 10),
     };
   } catch (error) {
-    console.error('[v0] Error getting citation graph:', error);
+    console.error('Error getting citation graph:', error);
     return { node: null, citing: [], cited: [] };
   }
 }
@@ -224,7 +224,7 @@ export async function getGraphStatistics(): Promise<any> {
     const graphData = await loadGraphData();
     return graphData.statistics || {};
   } catch (error) {
-    console.error('[v0] Error getting graph statistics:', error);
+    console.error('Error getting graph statistics:', error);
     return {};
   }
 }

@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ results, note: fs.existsSync(PREVIEW_FILE) ? 'Searching indexed preview data.' : 'Searching available year-level summary data. Individual paper search requires processed graph data.' });
   } catch (err) {
-    console.error('[v0] Search error:', err);
+    console.error('Search error:', err);
     return NextResponse.json(
       { error: 'Search failed', results: [] },
       { status: 500 }
