@@ -59,9 +59,13 @@ def export_stage(config: PipelineConfig) -> Dict:
     total_edges = cursor.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
     logger.info(f"Total: {total_nodes:,} nodes, {total_edges:,} edges")
 
-    # ── 1. graph_preview.json  (top 500K papers — browser safe) ───────────────
-    PREVIEW_LIMIT = 500_000
+    # ── 1. graph_preview.json  (top N papers for the browser network view) ──────
+    # ALL papers are in the SQLite DB and shown via the tile map.
+    # The network view (Sigma.js WebGL) has a practical browser limit of ~2M nodes.
+    # Raise --preview-limit to include more, lower it for slower machines.
+    PREVIEW_LIMIT = config.preview_limit
     logger.info(f"Building graph_preview.json (top {PREVIEW_LIMIT:,} papers by citation count) ...")
+    logger.info(f"  (ALL {total_nodes:,} papers are in {config.db_path} for tile map + API queries)")
 
     rows = cursor.execute(f"""
         SELECT n.paper_id, n.title, n.authors, n.year, n.cited_by_count,
@@ -99,7 +103,8 @@ def export_stage(config: PipelineConfig) -> Dict:
     edges_out: List[Dict] = []
     BATCH = 2_000_000
     offset = 0
-    while len(edges_out) < 5_000_000:  # cap edges in preview
+    EDGE_LIMIT = config.preview_edge_limit
+    while len(edges_out) < EDGE_LIMIT:
         edge_rows = cursor.execute(
             f"SELECT source_id, target_id FROM edges LIMIT {BATCH} OFFSET {offset}"
         ).fetchall()

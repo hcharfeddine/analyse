@@ -22,6 +22,11 @@ class PipelineConfig:
     gpu_devices: Optional[list] = None
     batch_size: int = 10000
     max_memory_per_gpu_gb: float = 20.0
+    max_gpu_memory_fraction: float = 0.85   # fraction of VRAM PyTorch may use per GPU
+
+    # Export settings
+    preview_limit: int = 500_000            # nodes in graph_preview.json for browser network view
+    preview_edge_limit: int = 5_000_000     # edges cap in graph_preview.json
 
     # Processing settings
     reset_db: bool = False
@@ -211,6 +216,33 @@ Examples:
         help="Disable checkpointing (not recommended)",
     )
     parser.add_argument(
+        "--preview-limit",
+        type=int,
+        default=500_000,
+        help=(
+            "Number of top-cited papers to include in graph_preview.json "
+            "(the browser network view). Default: 500,000. "
+            "You can raise this (e.g. 2000000) but the browser needs enough RAM. "
+            "ALL papers are always stored in the SQLite DB and shown via the tile map."
+        ),
+    )
+    parser.add_argument(
+        "--preview-edge-limit",
+        type=int,
+        default=5_000_000,
+        help="Max edges in graph_preview.json. Default: 5,000,000.",
+    )
+    parser.add_argument(
+        "--max-gpu-memory-fraction",
+        type=float,
+        default=0.85,
+        help=(
+            "Fraction of each GPU's VRAM PyTorch may use (0.0–1.0). "
+            "Default: 0.85 (85%% = ~20.4 GB on an RTX 4090). "
+            "Lower this if you see OOM errors; do not exceed 0.90."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -245,4 +277,7 @@ Examples:
         num_iterations_layout=args.num_layout_iterations,
         enable_checkpointing=not args.no_checkpointing,
         verbose=args.verbose,
+        preview_limit=args.preview_limit,
+        preview_edge_limit=args.preview_edge_limit,
+        max_gpu_memory_fraction=args.max_gpu_memory_fraction,
     )
