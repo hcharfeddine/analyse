@@ -159,3 +159,37 @@ checkpoints/
 # app/                                  ✓ Keep (web app)
 # lib/graph_loader.ts                   ✓ Keep (web utilities)
 # public/                               ✓ Keep (but outputs excluded above)
+
+# ============================================================
+# NOT NEEDED FOR CITATION NETWORK - Remove from tracking
+# ============================================================
+
+# Paper scrapers & acquirers (you're adding papers manually)
+enrichers/
+services/
+tools/
+scraper_main.py
+
+# Post-analysis utilities (not part of the pipeline)
+analy/
+analysis/
+quality/
+
+# Data preprocessors (not needed if citation scripts are standalone)
+processors/
+
+# Utility modules used only by scrapers
+utils/
+
+# Root-level package init (not needed without the above modules)
+__init__.py
+
+# Task scripts for one-time data prep (already done)
+scripts/task1_rename_files.py
+scripts/task2_compress_dataset.py
+
+# Grobid tests (Grobid not needed)
+tests/test_grobid.py
+
+# Summary outputs that will be regenerated
+analy_summary.json
