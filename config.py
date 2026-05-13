@@ -88,8 +88,8 @@ class ScraperConfig:
     # API Keys - REQUIRED AS OF FEBRUARY 13, 2026
     # Get your free OpenAlex API key at: https://openalex.org/settings/account
     # API key enables: faster requests, higher rate limits, access to from_created_date/from_updated_date filters
-    CORE_API_KEY: str = "qs9vjo5oT546nGac5CCGHy"  # IMPORTANT: Replace with your own OpenAlex API key
-    OPENALEX_MAILTO: str = "hcharfedine@gmail.com"  # Required: Your email for API identification
+    CORE_API_KEY: str = ""  # IMPORTANT: Replace with your own OpenAlex API key
+    OPENALEX_MAILTO: str = ""  # Required: Your email for API identification
 
     # Output Settings
     OUTPUT_FOLDER: str = "output"

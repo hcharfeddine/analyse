@@ -190,6 +190,24 @@ scripts/task2_compress_dataset.py
 
 # Grobid tests (Grobid not needed)
 tests/test_grobid.py
-
+tests/__init__.py
 # Summary outputs that will be regenerated
 analy_summary.json
+
+# ============================================================
+# NOT NEEDED - Paper scrapers, enrichers, analysis utils
+# ============================================================
+__init__.py
+analy/
+analysis/
+quality/
+processors/
+enrichers/
+services/
+tools/
+scraper_main.py
+utils/
+scripts/task1_rename_files.py
+scripts/task2_compress_dataset.py
+tests/__init__.py
+tests/test_grobid.py
