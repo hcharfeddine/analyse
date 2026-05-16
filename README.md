@@ -54,10 +54,10 @@ Start by cloning the project from GitHub to your server:
 
 ```bash
 # Clone the repository
-git clone https://github.com/hcharfeddine/analyse.git
+git clone https://github.com/hcharfeddine/Citation_Network.git
 
 # Navigate to project
-cd analyse
+cd Citation_Network-main
 ```
 
 ---
