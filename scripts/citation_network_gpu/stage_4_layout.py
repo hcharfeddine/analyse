@@ -174,6 +174,28 @@ def layout_stage(config: PipelineConfig) -> Dict:
     logger.info("=" * 60)
     logger.info("STAGE 4: LAYOUT COMPUTATION")
     logger.info("=" * 60)
+    
+    # Pre-check GPU and library availability
+    try:
+        import torch
+        cuda_available = torch.cuda.is_available()
+        logger.info(f"[PRE-CHECK] CUDA available: {cuda_available}")
+        if cuda_available:
+            logger.info(f"[PRE-CHECK] GPU: {torch.cuda.get_device_name(0)}")
+    except Exception as e:
+        logger.warning(f"[PRE-CHECK] PyTorch check failed: {e}")
+    
+    try:
+        import cugraph
+        logger.info("[PRE-CHECK] cuGraph available for ForceAtlas2 ✓")
+    except ImportError as e:
+        logger.warning(f"[PRE-CHECK] cuGraph not available: {e}")
+    
+    try:
+        import igraph
+        logger.info("[PRE-CHECK] igraph available for CPU DRL fallback ✓")
+    except ImportError as e:
+        logger.warning(f"[PRE-CHECK] igraph not available: {e}")
 
     checkpoint_manager = CheckpointManager(config.checkpoint_dir, config.enable_checkpointing)
     if checkpoint_manager.checkpoint_exists("layout"):
@@ -209,28 +231,40 @@ def layout_stage(config: PipelineConfig) -> Dict:
 
     # 1. Try cuGraph (GPU)
     try:
+        logger.info("[ALGO 1/3] Attempting cuGraph ForceAtlas2 (GPU) ...")
         layout = _layout_cugraph(node_ids, edges, config.num_iterations_layout)
         if layout:
             algorithm_used = "cugraph_force_atlas2"
+            logger.info(f"✓ SUCCESS: Using cuGraph ForceAtlas2 (GPU)")
+        else:
+            logger.warning("✗ cuGraph ForceAtlas2 returned None")
+    except ImportError as e:
+        logger.warning(f"✗ cuGraph not available: {e}")
+        logger.warning("  Install with: pip install cudf-cu12 cugraph-cu12")
     except Exception as e:
-        logger.warning(f"cuGraph layout failed: {e}")
+        logger.warning(f"✗ cuGraph ForceAtlas2 failed: {e}")
 
     # 2. Try batched FR on GPU
     if layout is None:
         try:
+            logger.info("[ALGO 2/3] Attempting Batched Fruchterman-Reingold on GPU ...")
             import torch
             device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-            logger.info(f"[GPU] Trying batched FR on {device} ...")
+            logger.info(f"  Using device: {device}")
             layout = _layout_batched_fr(node_ids, edges, config.num_iterations_layout, device)
             algorithm_used = f"batched_fr_{device.type}"
+            logger.info(f"✓ SUCCESS: Using Batched FR on {device.type.upper()}")
         except Exception as e:
-            logger.warning(f"Batched FR failed: {e}")
+            logger.warning(f"✗ Batched FR failed: {e}")
 
     # 3. Fallback: igraph DRL (CPU)
     if layout is None:
-        logger.info("[CPU] Falling back to igraph DRL ...")
+        logger.warning("[ALGO 3/3] FALLING BACK TO CPU igraph DRL (SLOW!)")
+        logger.warning(f"  ⚠️  This may take HOURS for {len(node_ids):,} nodes")
+        logger.warning("  Consider installing RAPIDS for GPU acceleration")
         layout = _layout_igraph_drl(node_ids, edges)
         algorithm_used = "igraph_drl"
+        logger.warning(f"Using {algorithm_used} (CPU)")
 
     logger.info(f"Layout computed via {algorithm_used} — writing to DB ...")
 

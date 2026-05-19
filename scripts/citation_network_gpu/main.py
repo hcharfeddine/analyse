@@ -37,6 +37,76 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def verify_gpu_setup():
+    """Check GPU and RAPIDS availability before running pipeline."""
+    logger.info("")
+    logger.info("=" * 70)
+    logger.info("GPU SETUP VERIFICATION")
+    logger.info("=" * 70)
+    
+    # Check CUDA
+    try:
+        import torch
+        cuda_available = torch.cuda.is_available()
+        if cuda_available:
+            device_count = torch.cuda.device_count()
+            logger.info(f"✓ CUDA available: {device_count} GPU(s) detected")
+            for i in range(min(device_count, 8)):
+                props = torch.cuda.get_device_properties(i)
+                logger.info(f"  GPU {i}: {props.name} ({props.total_memory / 1e9:.1f} GB VRAM)")
+        else:
+            logger.error("✗ CUDA NOT available. GPU acceleration DISABLED.")
+            logger.error("  GPU will not be used — pipeline will run on CPU (SLOW).")
+            return False
+    except Exception as e:
+        logger.error(f"✗ PyTorch/CUDA check failed: {e}")
+        return False
+    
+    # Check RAPIDS for Stage 3 (Community Detection)
+    rapids_available = False
+    try:
+        import cudf
+        import cugraph
+        rapids_available = True
+        logger.info("✓ RAPIDS (cudf + cugraph) available")
+        logger.info("  → Stage 3 will use GPU Louvain (FAST)")
+    except ImportError as e:
+        logger.warning(f"⚠️  RAPIDS not available: {e}")
+        logger.warning("  → Stage 3 will use CPU Louvain (SLOW on large graphs)")
+        logger.warning("")
+        logger.warning("  To enable GPU community detection, install RAPIDS:")
+        logger.warning("    pip install cudf-cu12 cugraph-cu12  # For CUDA 12")
+        logger.warning("    # OR for CUDA 11:")
+        logger.warning("    pip install cudf-cu11 cugraph-cu11")
+    
+    # Check igraph for Stage 4 fallback
+    igraph_available = False
+    try:
+        import igraph
+        igraph_available = True
+        logger.info("✓ igraph available (Stage 4 CPU layout fallback)")
+    except ImportError:
+        logger.warning("⚠️  igraph not installed")
+        logger.warning("  → Stage 4 CPU fallback will fail without this")
+        logger.warning("  Install with: pip install igraph")
+    
+    logger.info("")
+    logger.info("Summary:")
+    logger.info(f"  CUDA: {'✓' if cuda_available else '✗'}")
+    logger.info(f"  RAPIDS: {'✓' if rapids_available else '✗ (GPU Louvain will fail)'}")
+    logger.info(f"  igraph: {'✓' if igraph_available else '✗ (CPU DRL will fail)'}")
+    
+    if not rapids_available:
+        logger.warning("")
+        logger.warning("WARNING: RAPIDS not available! Stage 3 will use CPU Louvain,")
+        logger.warning("which can take WEEKS for 50M+ papers. Consider installing RAPIDS.")
+    
+    logger.info("=" * 70)
+    logger.info("")
+    
+    return cuda_available
+
+
 def run_pipeline(config):
     """
     Run the complete GPU-accelerated citation network pipeline.
@@ -147,6 +217,12 @@ def run_pipeline(config):
 if __name__ == "__main__":
     try:
         config = parse_args()
+        
+        # Verify GPU setup before running
+        gpu_ok = verify_gpu_setup()
+        if not gpu_ok:
+            logger.warning("GPU unavailable. Pipeline will fall back to CPU (may be VERY slow).")
+        
         run_pipeline(config)
     except KeyboardInterrupt:
         logger.warning("Pipeline interrupted by user")

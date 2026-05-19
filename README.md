@@ -216,6 +216,50 @@ pip install -r requirements.txt
 
 ---
 
+## ⚡ GPU Acceleration Setup (CRITICAL FOR PERFORMANCE!)
+
+**⚠️ IMPORTANT:** Without RAPIDS, processing takes MONTHS instead of hours. Do this step now!
+
+### Step 1: Check Your CUDA Version
+
+```bash
+# Check which CUDA version you have
+nvcc --version
+
+# Look for output like: "Cuda compilation tools, release 12.x"
+# OR: "Cuda compilation tools, release 11.x"
+```
+
+### Step 2: Install RAPIDS (Choose One Below)
+
+**For CUDA 12.x:**
+```bash
+pip install cudf-cu12 cugraph-cu12
+# This takes 10-15 minutes
+```
+
+**For CUDA 11.x:**
+```bash
+pip install cudf-cu11 cugraph-cu11
+# This takes 10-15 minutes
+```
+
+### Step 3: Verify GPU Setup
+
+```bash
+# Run diagnostic script to confirm everything is working
+python diagnose_gpu.py
+
+# Expected output should show:
+# ✓ CUDA available: X GPU(s) detected
+# ✓ RAPIDS (cudf + cugraph) available
+# ✓ GPU ForceAtlas2 ready for Stage 4
+
+# If something shows ✗, that's a problem - review GPU_TROUBLESHOOTING.md
+```
+
+---
+
 ## ⚙️ Configure Pipeline
 
 Review and adjust the pipeline configuration:
@@ -400,16 +444,35 @@ python main.py --input-dir ../../data/papers --db public/data/citation_network.d
 
 While the pipeline runs, monitor it in separate terminals:
 
-### Terminal 1: Watch GPU Usage
+### Terminal 1: Watch GPU Usage (CRITICAL!)
 
 ```bash
-# Monitor GPU real-time
+# Monitor GPU in detail (shows per-process GPU usage)
+nvidia-smi dmon -s puctem
+
+# OR for simpler view
 watch -n 1 nvidia-smi
 
-# You should see:
-# - GPU Memory Usage increasing
-# - GPU Utilization increasing
+# IMPORTANT: You should see:
+# - GPU Memory Usage increasing (means data is on GPU)
+# - GPU Utilization 80-99% (means GPU is being used)
 # - Process: python main.py
+
+# If GPU Utilization is 0%, GPU is NOT being used (problem!)
+# See troubleshooting below if this happens
+```
+
+**⚠️ Troubleshooting GPU Not Being Used:**
+```bash
+# While pipeline is running, check if RAPIDS is actually being used
+ps aux | grep python
+
+# Then check detailed GPU process info
+nvidia-smi -q -d COMPUTE_CAP
+
+# If you see "GPU Utilization: 0%", RAPIDS didn't install correctly
+# Run this to fix:
+pip install --force-reinstall cudf-cu12 cugraph-cu12
 ```
 
 ### Terminal 2: Watch Database Growth
@@ -569,11 +632,12 @@ rm -f *.backup
 ln -s /large-disk/citation_network.db public/data/
 ```
 
-### Issue 5: GPU Not Detected
+### Issue 5: GPU Not Detected or Not Being Used (CRITICAL!)
 
 **Error message**: `CUDA device not found` or `No CUDA devices available`
+**Or**: GPU shows 0% utilization during processing (RAPIDS not working)
 
-**Solution**:
+**Solution A: GPU Not Visible at All**
 ```bash
 # Check GPU is visible
 nvidia-smi
@@ -584,6 +648,40 @@ nvcc --version
 # Reinstall PyTorch with correct CUDA version
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
+
+**Solution B: GPU Visible But Not Being Used (RAPIDS Problem)**
+```bash
+# This is usually because RAPIDS (cudf/cugraph) didn't install correctly
+
+# Step 1: Check if RAPIDS is actually installed
+python -c "import cudf; print('✓ cudf available')"
+python -c "import cugraph; print('✓ cugraph available')"
+
+# If either fails, RAPIDS is missing (this is the problem!)
+
+# Step 2: Run diagnostic
+python diagnose_gpu.py
+
+# Step 3: Reinstall RAPIDS (check CUDA version first!)
+nvcc --version  # Note if it's CUDA 12.x or 11.x
+
+# For CUDA 12:
+pip install --force-reinstall cudf-cu12 cugraph-cu12
+
+# For CUDA 11:
+pip install --force-reinstall cudf-cu11 cugraph-cu11
+
+# Step 4: Verify installation worked
+python -c "import cudf; print('✓ cudf version:', cudf.__version__)"
+python -c "import cugraph; print('✓ cugraph version:', cugraph.__version__)"
+
+# Step 5: Run diagnostic again to confirm
+python diagnose_gpu.py
+```
+
+**If RAPIDS still won't install:**
+- See `GPU_TROUBLESHOOTING.md` for detailed troubleshooting
+- Or run: `python diagnose_gpu.py` for automated diagnostics
 
 ### Issue 6: Pipeline Crashed Mid-Run
 
@@ -604,26 +702,6 @@ python main.py \
 
 ---
 
-## 📈 Performance Expectations
-
-**Typical timeline (8x RTX 4090 with ~50M papers):**
-
-| Stage | Time |
-|-------|------|
-| Stage 1: Ingest | 20-40 min |
-| Stage 2: Deduplicate | 20-40 min |
-| Stage 3: Community Detection | 30-60 min |
-| Stage 4: Layout Computation | 4-8 hours |
-| Stage 5: Export | 30-60 min |
-| **Total** | **5-7 hours** |
-
-**Smaller datasets:**
-- 100K papers: ~10 minutes
-- 1M papers: ~30 minutes
-- 10M papers: ~1-2 hours
-- 54M papers: ~5-7 hours
-
----
 
 ## 🎉 What's Next?
 

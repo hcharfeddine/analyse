@@ -177,6 +177,24 @@ def community_detection_stage(config: PipelineConfig) -> Dict:
     logger.info("=" * 60)
     logger.info("STAGE 3: COMMUNITY DETECTION (OPTIMIZED — STREAMING)")
     logger.info("=" * 60)
+    
+    # Pre-check GPU and library availability
+    try:
+        import torch
+        cuda_available = torch.cuda.is_available()
+        logger.info(f"[PRE-CHECK] CUDA available: {cuda_available}")
+        if cuda_available:
+            logger.info(f"[PRE-CHECK] GPU: {torch.cuda.get_device_name(0)}")
+    except Exception as e:
+        logger.warning(f"[PRE-CHECK] PyTorch check failed: {e}")
+    
+    try:
+        import cudf
+        import cugraph
+        logger.info("[PRE-CHECK] RAPIDS (cudf/cugraph) available ✓")
+    except ImportError as e:
+        logger.warning(f"[PRE-CHECK] RAPIDS not available: {e}")
+        logger.warning("[PRE-CHECK] Stage 3 will use CPU Louvain (SLOW!)")
 
     checkpoint_manager = CheckpointManager(config.checkpoint_dir, config.enable_checkpointing)
     if checkpoint_manager.checkpoint_exists("community"):
@@ -200,18 +218,28 @@ def community_detection_stage(config: PipelineConfig) -> Dict:
     if config.community_algorithm in ("louvain", "leiden"):
         # 1. Try cuGraph (GPU) with STREAMING
         try:
-            logger.info("[GPU STREAMING] Attempting cuGraph Louvain with streaming edges ...")
+            logger.info("[ALGO 1/3] Attempting cuGraph Louvain with streaming edges (GPU) ...")
             communities = _louvain_cugraph_streaming(node_ids, str(config.db_path), batch_size=5_000_000)
             if communities:
                 algorithm_used = "cugraph_louvain_streaming"
+                logger.info(f"✓ SUCCESS: Using GPU Louvain (cuGraph streaming) — {len(set(communities.values())):,} communities")
+            else:
+                logger.warning("✗ cuGraph returned empty result")
+                communities = None
+        except ImportError as e:
+            logger.error(f"✗ cuGraph import failed: {e}")
+            logger.error("  RAPIDS (cudf, cugraph) not available")
+            logger.error("  Install with: pip install cudf-cu12 cugraph-cu12")
+            communities = None
         except Exception as e:
-            logger.warning(f"cuGraph Louvain streaming failed: {e}")
+            logger.error(f"✗ cuGraph Louvain streaming failed: {e}")
             communities = None
         
         # 2. Fallback: Try CPU Louvain (requires edge list)
         if not communities:
             try:
-                logger.info("[CPU] Attempting python-louvain (will load edges) ...")
+                logger.info("[ALGO 2/3] Attempting python-louvain (CPU) ...")
+                logger.info("WARNING: CPU Louvain on large graphs can take WEEKS")
                 logger.info("Loading edges for CPU Louvain ...")
                 edges: List[Tuple[str, str]] = []
                 BATCH = 5_000_000
@@ -228,15 +256,17 @@ def community_detection_stage(config: PipelineConfig) -> Dict:
                 
                 communities = _louvain_cpu(node_ids, edges)
                 algorithm_used = "cpu_louvain"
+                logger.info(f"✓ Using CPU Louvain — {len(set(communities.values())):,} communities")
             except Exception as e2:
-                logger.warning(f"CPU Louvain failed: {e2}")
-                logger.warning("Falling back to degree-bin clustering (not real Louvain)")
+                logger.error(f"✗ CPU Louvain failed: {e2}")
+                logger.warning("[ALGO 3/3] Falling back to degree-bin clustering (NOT real Louvain!)")
                 # For fallback, still need edges
                 edges = cursor.execute("SELECT source_id, target_id FROM edges").fetchall()
                 communities = _degree_bin_fallback(node_ids, edges)
                 algorithm_used = "degree_bin_fallback"
+                logger.warning(f"Using fallback degree-bin clustering — {len(set(communities.values())):,} pseudo-communities")
     else:
-        logger.info("Using degree-bin clustering (non-optimal)")
+        logger.info("[ALGO] Using degree-bin clustering (non-optimal)")
         edges = cursor.execute("SELECT source_id, target_id FROM edges").fetchall()
         communities = _degree_bin_fallback(node_ids, edges)
         algorithm_used = "degree_bin"
