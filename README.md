@@ -17,6 +17,7 @@ Complete step-by-step guide to set up and run the GPU-accelerated citation netwo
 9. [Monitor Progress](#monitor-progress)
 10. [Verify Results](#verify-results)
 11. [Troubleshooting](#troubleshooting)
+12. [Performance Tuning](PERFORMANCE_TUNING.md) — Optimize Stages 1–2 with CPU workers, WAL pragmas, and NVMe storage
 
 ---
 

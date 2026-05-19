@@ -8,3 +8,5 @@ tenacity==8.2.3  # For retry logic
 grobid-client-python==0.1.2  # Updated to stable available version
 # Added Brotli support for aiohttp
 brotli==1.1.0
+# Performance optimization - faster JSON parsing (3x speedup over standard json)
+orjson==3.9.10

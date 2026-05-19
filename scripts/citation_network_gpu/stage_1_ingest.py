@@ -3,8 +3,7 @@
 OPTIMIZATION 1: Parallel Multiprocessing Ingest
   Instead of processing JSON files sequentially, use ThreadPoolExecutor
   to process 8 files in parallel (one per GPU available).
-
-  Result: 1.5–2.5h → 20–40 min (3–5x faster)
+)
   
   Key improvements:
   - ThreadPoolExecutor with 8 workers processes 8 JSON files concurrently
@@ -14,6 +13,7 @@ OPTIMIZATION 1: Parallel Multiprocessing Ingest
 """
 
 import logging
+import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -42,6 +42,10 @@ def setup_database(db_path: Path, reset: bool = False) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA cache_size=-512000")
     conn.execute("PRAGMA temp_store=MEMORY")
+    # Performance optimizations for parallel writes
+    conn.execute("PRAGMA wal_autocheckpoint=50000")  # Checkpoint less frequently (default 1000)
+    conn.execute("PRAGMA locking_mode=EXCLUSIVE")     # Exclusive lock for isolated writes
+    conn.execute("PRAGMA busy_timeout=5000")          # 5 second timeout for locked DB
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -237,9 +241,11 @@ def ingest_stage(config: PipelineConfig) -> Dict:
     conn.close()  # Close main connection before spawning workers
 
     # ── OPTIMIZATION: Parallel processing with ThreadPoolExecutor ──────────────────
-    # Use 8 workers (one per GPU) for concurrent file processing
-    num_workers = min(config.num_gpus, len(pending_files))
-    logger.info(f"Starting parallel ingest with {num_workers} workers ...")
+    # Use 2x CPU cores for JSON parsing (I/O-bound, releases GIL)
+    # JSON parsing is I/O-bound and benefits from more threads than GPUs
+    cpu_count = os.cpu_count() or 4
+    num_workers = max(8, min(cpu_count * 2, len(pending_files)))
+    logger.info(f"Starting parallel ingest with {num_workers} workers (CPUs={cpu_count}, Files={len(pending_files)})")
     
     file_results = {}
     with ThreadPoolExecutor(max_workers=num_workers) as executor:

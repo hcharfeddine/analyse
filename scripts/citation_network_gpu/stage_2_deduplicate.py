@@ -44,6 +44,9 @@ def deduplicate_stage(config: PipelineConfig) -> Dict:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA cache_size=-512000")
+    # Performance optimizations for large-scale deduplication
+    conn.execute("PRAGMA wal_autocheckpoint=50000")  # Checkpoint less frequently
+    conn.execute("PRAGMA busy_timeout=5000")          # 5 second timeout for locked DB
     cursor = conn.cursor()
 
     # Count before
