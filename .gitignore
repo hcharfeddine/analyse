@@ -115,6 +115,8 @@ services/
 tools/
 scraper_main.py
 utils/
+!scripts/citation_network_gpu/utils/db_schema.py
+!scripts/citation_network_gpu/utils/node_mapping.py
 scripts/task1_rename_files.py
 scripts/task2_compress_dataset.py
 scripts/task3_add_abstracts_to_fos.py
