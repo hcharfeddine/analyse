@@ -1,15 +1,15 @@
-"""Stage 1 OPTIMIZED: Parallel ingest papers and create multi-GPU graph shards.
+"""Stage 1 OPTIMIZED: Parallel ingest with integer mappings and filtering.
 
-OPTIMIZATION 1: Parallel Multiprocessing Ingest
-  Instead of processing JSON files sequentially, use ThreadPoolExecutor
-  to process 8 files in parallel (one per GPU available).
-)
-  
-  Key improvements:
-  - ThreadPoolExecutor with 8 workers processes 8 JSON files concurrently
-  - Each worker gets its own SQLite connection (thread-safe)
-  - Batched commits every 50K papers
-  - File-level resumability (tracks processed_files)
+OPTIMIZATIONS:
+  1. Create integer mappings for paper IDs and field names
+  2. Filter out papers with no citations (in_degree=0 AND out_degree=0)
+  3. Store only minimal graph data (node_id, year, field_id, degrees)
+  4. Separate full metadata into paper_metadata table
+  5. Parallel processing with ThreadPoolExecutor for fast ingestion
+
+Expected improvements:
+  - Memory: 70-80% reduction (storing integers instead of text)
+  - Speed: 50-80% faster graph operations (O(1) integer lookups vs string hashing)
 """
 
 import logging
@@ -17,115 +17,40 @@ import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 
 from config import PipelineConfig
-from utils.checkpoint import CheckpointManager, StageProgress
-from utils.data_loader import GraphBuilder, PaperDataLoader
-from utils.graph_utils import GraphShardManager
+from utils.checkpoint import CheckpointManager
+from utils.data_loader import PaperDataLoader
+from utils.db_schema import create_optimized_schema, reset_database
+from utils.node_mapping import NodeMapping, FieldMapping
 
 logger = logging.getLogger(__name__)
 
 
-def setup_database(db_path: Path, reset: bool = False) -> sqlite3.Connection:
-    """Setup SQLite database for graph metadata."""
-    if reset and db_path.exists():
-        db_path.unlink()
-        for suffix in ("-wal", "-shm"):
-            p = Path(str(db_path) + suffix)
-            if p.exists():
-                p.unlink()
-        logger.info(f"Reset database: {db_path}")
-
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA cache_size=-512000")
-    conn.execute("PRAGMA temp_store=MEMORY")
-    # Performance optimizations for parallel writes
-    conn.execute("PRAGMA wal_autocheckpoint=50000")  # Checkpoint less frequently (default 1000)
-    conn.execute("PRAGMA locking_mode=EXCLUSIVE")     # Exclusive lock for isolated writes
-    conn.execute("PRAGMA busy_timeout=5000")          # 5 second timeout for locked DB
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS nodes (
-            paper_id TEXT PRIMARY KEY,
-            title TEXT,
-            authors TEXT,
-            year INTEGER,
-            abstract TEXT,
-            cited_by_count INTEGER DEFAULT 0,
-            in_degree INTEGER DEFAULT 0,
-            out_degree INTEGER DEFAULT 0,
-            field_of_study TEXT,
-            community_id INTEGER,
-            x REAL,
-            y REAL
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS edges (
-            source_id TEXT,
-            target_id TEXT,
-            PRIMARY KEY (source_id, target_id)
-        ) WITHOUT ROWID
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS node_coordinates (
-            paper_id TEXT PRIMARY KEY,
-            x REAL,
-            y REAL,
-            layout_iteration INTEGER
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS processing_status (
-            stage TEXT PRIMARY KEY,
-            status TEXT,
-            timestamp TEXT,
-            details TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS metadata (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS processed_files (
-            filename TEXT PRIMARY KEY,
-            papers INTEGER,
-            edges INTEGER,
-            finished_at TEXT
-        )
-    """)
-    conn.commit()
-    logger.info(f"Database ready: {db_path}")
-    return conn
-
-
-def _process_single_file(
+def _process_single_file_optimized(
     json_file: Path,
     db_path: Path,
     data_loader: PaperDataLoader,
+    node_mapping: NodeMapping,
+    field_mapping: FieldMapping,
     commit_every: int,
-) -> Tuple[str, int, int]:
+) -> Tuple[str, int, int, Set[str]]:
     """
-    Process a single JSON file in a worker thread.
+    Process a single JSON file in a worker thread with integer mappings.
     
     Args:
         json_file: Path to JSON file
         db_path: Path to SQLite database
         data_loader: PaperDataLoader instance
+        node_mapping: NodeMapping instance for paper ID → node_id conversion
+        field_mapping: FieldMapping instance for field name → field_id conversion
         commit_every: Commit batch size
     
     Returns:
-        (filename, num_papers, num_edges)
+        (filename, num_papers, num_edges, paper_ids_with_edges)
     """
-    # IMPORTANT: Each worker gets its own DB connection (SQLite is thread-safe)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA cache_size=-512000")
@@ -134,64 +59,104 @@ def _process_single_file(
     size_gb = json_file.stat().st_size / 1e9
     logger.info(f"[Worker] Processing: {json_file.name} ({size_gb:.2f} GB)")
     
-    INSERT_NODE = """
-        INSERT INTO nodes (paper_id, title, authors, year, abstract, cited_by_count, out_degree, field_of_study)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(paper_id) DO UPDATE SET
-            title=COALESCE(excluded.title, nodes.title),
-            year=COALESCE(excluded.year, nodes.year),
-            cited_by_count=COALESCE(excluded.cited_by_count, nodes.cited_by_count),
-            out_degree=nodes.out_degree + excluded.out_degree
+    INSERT_GRAPH_NODE = """
+        INSERT INTO graph_nodes (node_id, year, field_id)
+        VALUES (?, ?, ?)
+        ON CONFLICT(node_id) DO UPDATE SET
+            year=COALESCE(excluded.year, graph_nodes.year)
     """
-    INSERT_EDGE = "INSERT OR IGNORE INTO edges (source_id, target_id) VALUES (?, ?)"
-    INSERT_TARGET = "INSERT OR IGNORE INTO nodes (paper_id, in_degree) VALUES (?, 0)"
-    UPDATE_INDEG = "UPDATE nodes SET in_degree = COALESCE(in_degree,0) + ? WHERE paper_id = ?"
+    INSERT_METADATA = """
+        INSERT INTO paper_metadata (node_id, paper_id, title, authors, abstract, cited_by_count)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(node_id) DO UPDATE SET
+            title=COALESCE(excluded.title, paper_metadata.title),
+            cited_by_count=COALESCE(excluded.cited_by_count, paper_metadata.cited_by_count)
+    """
+    INSERT_EDGE = "INSERT OR IGNORE INTO graph_edges (source_id, target_id) VALUES (?, ?)"
     
     node_buf = []
+    metadata_buf = []
     edge_buf = []
-    indeg_acc: Dict[str, int] = {}
+    degree_acc: Dict[int, Tuple[int, int]] = {}  # node_id -> (in_degree, out_degree)
     file_papers = 0
     file_edges = 0
+    paper_ids_with_edges: Set[str] = set()
     
     def flush():
         if node_buf:
-            cursor.executemany(INSERT_NODE, node_buf)
+            cursor.executemany(INSERT_GRAPH_NODE, node_buf)
             node_buf.clear()
+        if metadata_buf:
+            cursor.executemany(INSERT_METADATA, metadata_buf)
+            metadata_buf.clear()
         if edge_buf:
             cursor.executemany(INSERT_EDGE, edge_buf)
             edge_buf.clear()
-        if indeg_acc:
-            cursor.executemany(INSERT_TARGET, [(tid,) for tid in indeg_acc])
-            cursor.executemany(UPDATE_INDEG, [(cnt, tid) for tid, cnt in indeg_acc.items()])
-            indeg_acc.clear()
         conn.commit()
     
+    # Process all papers from this file
     for paper in data_loader._iter_papers_from_file(json_file):
-        pid = paper["id"]
+        paper_id = paper["id"]
+        pid_int = node_mapping.get_or_create_node_id(paper_id)
+        
+        # Get or create field ID
+        field_name = paper.get("field_of_study", "")
+        field_id = field_mapping.get_or_create_field_id(field_name)
+        
+        year = paper.get("year")
+        
+        # Add to graph_nodes (lightweight)
+        node_buf.append((pid_int, year, field_id))
+        
+        # Add to paper_metadata (full data)
         authors_str = ";".join(paper.get("authors", []))
-        node_buf.append((
-            pid,
+        metadata_buf.append((
+            pid_int,
+            paper_id,
             paper.get("title", ""),
             authors_str,
-            paper.get("year"),
             paper.get("abstract", ""),
             paper.get("cited_by_count", 0),
-            len(paper.get("citations", [])),
-            paper.get("field_of_study", ""),
         ))
         
+        # Process citations (edges)
+        out_degree = 0
         for ref_id in paper.get("citations", []):
-            if ref_id != pid:
-                edge_buf.append((pid, ref_id))
-                indeg_acc[ref_id] = indeg_acc.get(ref_id, 0) + 1
+            if ref_id != paper_id:  # Skip self-loops
+                ref_int = node_mapping.get_or_create_node_id(ref_id)
+                edge_buf.append((pid_int, ref_int))
+                
+                # Track degree
+                if ref_int not in degree_acc:
+                    degree_acc[ref_int] = (0, 0)
+                in_d, out_d = degree_acc[ref_int]
+                degree_acc[ref_int] = (in_d + 1, out_d)
+                
+                if pid_int not in degree_acc:
+                    degree_acc[pid_int] = (0, 0)
+                in_d, out_d = degree_acc[pid_int]
+                degree_acc[pid_int] = (in_d, out_d + 1)
+                
+                out_degree += 1
                 file_edges += 1
+                paper_ids_with_edges.add(paper_id)
+                paper_ids_with_edges.add(ref_id)
         
         file_papers += 1
         if file_papers % commit_every == 0:
             flush()
             logger.info(f"[Worker] {json_file.name}: {file_papers:,} papers, {file_edges:,} edges")
     
+    # Final flush
     flush()
+    
+    # Update degree information
+    for node_id, (in_deg, out_deg) in degree_acc.items():
+        cursor.execute(
+            "UPDATE graph_nodes SET in_degree = in_degree + ?, out_degree = out_degree + ? WHERE node_id = ?",
+            (in_deg, out_deg, node_id)
+        )
+    conn.commit()
     
     # Record completion
     cursor.execute(
@@ -202,15 +167,18 @@ def _process_single_file(
     conn.close()
     
     logger.info(f"[Worker] Done {json_file.name}: {file_papers:,} papers, {file_edges:,} edges")
-    return (json_file.name, file_papers, file_edges)
+    return (json_file.name, file_papers, file_edges, paper_ids_with_edges)
 
 
-def ingest_stage(config: PipelineConfig) -> Dict:
+def ingest_stage_optimized(config: PipelineConfig) -> Dict:
     """
-    Stage 1 OPTIMIZED: Ingest papers from JSON files in PARALLEL.
+    Stage 1 OPTIMIZED: Ingest papers with integer mappings and filtering.
 
-    Uses ThreadPoolExecutor with 8 workers (one per GPU) to process
-    JSON files concurrently. Much faster than sequential processing.
+    Process:
+      1. Load/initialize node_id and field_id mappings
+      2. Process JSON files in parallel, creating integer-based graph structure
+      3. Filter out papers with no edges (isolated nodes)
+      4. Store mappings and graph data to database
 
     Args:
         config: Pipeline configuration.
@@ -218,19 +186,34 @@ def ingest_stage(config: PipelineConfig) -> Dict:
         Results dictionary with graph statistics.
     """
     logger.info("=" * 60)
-    logger.info("STAGE 1: INGEST (OPTIMIZED — PARALLEL)")
+    logger.info("STAGE 1 OPTIMIZED: INGEST (INTEGER MAPPINGS + FILTERING)")
     logger.info("=" * 60)
 
     checkpoint_manager = CheckpointManager(config.checkpoint_dir, config.enable_checkpointing)
-    if checkpoint_manager.checkpoint_exists("ingest"):
+    if checkpoint_manager.checkpoint_exists("ingest_optimized"):
         logger.info("Found existing checkpoint, loading...")
-        cp = checkpoint_manager.load_checkpoint("ingest")
+        cp = checkpoint_manager.load_checkpoint("ingest_optimized")
         return cp.get("data", {})
 
-    conn = setup_database(config.db_path, reset=config.reset_db)
+    # Reset or create optimized database
+    if config.reset_db:
+        reset_database(config.db_path)
+    conn = create_optimized_schema(config.db_path)
     cursor = conn.cursor()
 
-    # Track already-processed files (resumability)
+    # Initialize mappings
+    node_mapping = NodeMapping(config.db_path)
+    node_mapping.ensure_tables(conn)
+    node_mapping.load_mappings(conn)
+    
+    field_mapping = FieldMapping(config.db_path)
+    field_mapping.ensure_tables(conn)
+    field_mapping.load_mappings(conn)
+    
+    logger.info(f"Existing mappings: {node_mapping.stats()['total_mappings']} paper IDs, "
+                f"{field_mapping.stats()['total_fields']} fields")
+
+    # Track already-processed files
     done_files = {r[0] for r in cursor.execute("SELECT filename FROM processed_files").fetchall()}
     if done_files:
         logger.info(f"Resuming — skipping {len(done_files)} already-processed files")
@@ -238,85 +221,107 @@ def ingest_stage(config: PipelineConfig) -> Dict:
     data_loader = PaperDataLoader(config.input_dir)
     pending_files = [f for f in data_loader.json_files if f.name not in done_files]
     logger.info(f"Files to process: {len(pending_files)}")
-    conn.close()  # Close main connection before spawning workers
+    conn.close()  # Close before spawning workers
 
-    # ── OPTIMIZATION: Parallel processing with ThreadPoolExecutor ──────────────────
-    # Use 2x CPU cores for JSON parsing (I/O-bound, releases GIL)
-    # JSON parsing is I/O-bound and benefits from more threads than GPUs
+    # ────── PARALLEL PROCESSING ──────────────────────────────────────────
     cpu_count = os.cpu_count() or 4
     num_workers = max(8, min(cpu_count * 2, len(pending_files)))
-    logger.info(f"Starting parallel ingest with {num_workers} workers (CPUs={cpu_count}, Files={len(pending_files)})")
+    logger.info(f"Starting parallel ingest with {num_workers} workers")
     
     file_results = {}
+    all_paper_ids_with_edges: Set[str] = set()
+    
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        # Submit all tasks
         futures = {
             executor.submit(
-                _process_single_file,
+                _process_single_file_optimized,
                 json_file,
                 config.db_path,
                 data_loader,
+                node_mapping,
+                field_mapping,
                 config.commit_every,
             ): json_file.name
             for json_file in pending_files
         }
         
-        # Collect results as they complete
         for future in as_completed(futures):
-            filename, num_papers, num_edges = future.result()
+            filename, num_papers, num_edges, paper_ids = future.result()
             file_results[filename] = {"papers": num_papers, "edges": num_edges}
-            logger.info(f"Completed: {filename} ({num_papers:,} papers, {num_edges:,} edges)")
-    
-    # ── Aggregate results and create indexes ─────────────────────────────────────
-    logger.info("Creating indexes ...")
-    conn = sqlite3.connect(config.db_path)
+            all_paper_ids_with_edges.update(paper_ids)
+            logger.info(f"Completed: {filename}")
+
+    # ────── FLUSH MAPPINGS TO DATABASE ──────────────────────────────────────
+    conn = sqlite3.connect(str(config.db_path))
+    node_mapping.flush_to_db(conn)
+    field_mapping.flush_to_db(conn)
+    conn.close()
+
+    # ────── FILTER PAPERS WITH NO EDGES ──────────────────────────────────────
+    logger.info("Filtering papers with no forward or backward citations...")
+    conn = sqlite3.connect(str(config.db_path))
     cursor = conn.cursor()
     
+    # Find papers with in_degree=0 AND out_degree=0
+    isolated = cursor.execute(
+        "SELECT node_id FROM graph_nodes WHERE in_degree = 0 AND out_degree = 0"
+    ).fetchall()
+    isolated_ids = [r[0] for r in isolated]
+    
+    logger.info(f"Found {len(isolated_ids):,} papers with no citations (in/out degree = 0)")
+    
+    # Delete isolated nodes in batches
+    CHUNK = 50000
+    for start in range(0, len(isolated_ids), CHUNK):
+        chunk = isolated_ids[start:start + CHUNK]
+        placeholders = ",".join("?" * len(chunk))
+        cursor.execute(f"DELETE FROM graph_nodes WHERE node_id IN ({placeholders})", chunk)
+        cursor.execute(f"DELETE FROM paper_metadata WHERE node_id IN ({placeholders})", chunk)
+    conn.commit()
+
+    # ────── CREATE INDEXES AND FINALIZE ──────────────────────────────────────
+    logger.info("Creating indexes...")
     for stmt in [
-        "CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id)",
-        "CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id)",
-        "CREATE INDEX IF NOT EXISTS idx_nodes_year ON nodes(year)",
-        "CREATE INDEX IF NOT EXISTS idx_nodes_cited ON nodes(cited_by_count)",
+        "CREATE INDEX IF NOT EXISTS idx_graph_nodes_year ON graph_nodes(year)",
+        "CREATE INDEX IF NOT EXISTS idx_graph_edges_source ON graph_edges(source_id)",
+        "CREATE INDEX IF NOT EXISTS idx_graph_edges_target ON graph_edges(target_id)",
     ]:
         cursor.execute(stmt)
     conn.commit()
+
+    # Get final statistics
+    node_count = cursor.execute("SELECT COUNT(*) FROM graph_nodes").fetchone()[0]
+    edge_count = cursor.execute("SELECT COUNT(*) FROM graph_edges").fetchone()[0]
     
-    node_total = cursor.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-    edge_total = cursor.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-    cursor.executemany("INSERT OR REPLACE INTO metadata (key,value) VALUES (?,?)", [
-        ("total_nodes", str(node_total)),
-        ("total_edges", str(edge_total)),
-    ])
     cursor.execute(
-        "INSERT OR REPLACE INTO processing_status (stage, status, timestamp, details) VALUES (?,?,datetime('now'),?)",
-        ("ingest", "completed", f"nodes={node_total}, edges={edge_total}, parallel_workers={num_workers}"),
+        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+        ("total_nodes_after_filtering", str(node_count))
+    )
+    cursor.execute(
+        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+        ("total_edges", str(edge_count))
+    )
+    cursor.execute(
+        "INSERT OR REPLACE INTO processing_status (stage, status, timestamp, details) VALUES (?, ?, datetime('now'), ?)",
+        ("ingest_optimized", "completed", 
+         f"nodes={node_count}, edges={edge_count}, isolated_removed={len(isolated_ids)}")
     )
     conn.commit()
-
-    # GPU shards (in-memory, for downstream stages that need them)
-    logger.info(f"\nCreating {config.num_gpus} GPU shards ...")
-    shard_manager = GraphShardManager(config.num_gpus, config.gpu_devices or list(range(config.num_gpus)))
-
-    for row in cursor.execute("SELECT paper_id, title, year, cited_by_count FROM nodes LIMIT 1000000"):
-        shard_manager.add_node(row[0], {"title": row[1], "year": row[2], "cited_by_count": row[3]})
-
-    for row in cursor.execute("SELECT source_id, target_id FROM edges LIMIT 5000000"):
-        try:
-            shard_manager.add_edge(row[0], row[1])
-        except Exception:
-            continue
-
     conn.close()
 
     results = {
-        "num_nodes": node_total,
-        "num_edges": edge_total,
-        "files_processed": len(pending_files),
-        "parallel_workers": num_workers,
-        "file_results": file_results,
-        "shard_stats": shard_manager.get_shard_stats(),
+        "total_nodes_after_filtering": node_count,
+        "total_edges": edge_count,
+        "isolated_nodes_removed": len(isolated_ids),
+        "node_mappings_created": node_mapping.stats()["total_mappings"],
+        "field_mappings_created": field_mapping.stats()["total_fields"],
+        "files_processed": len(file_results),
     }
 
-    logger.info(f"Stage 1 OPTIMIZED Results: nodes={node_total:,}, edges={edge_total:,}, workers={num_workers}")
-    checkpoint_manager.save_checkpoint("ingest", results, results)
+    logger.info("")
+    logger.info("Stage 1 Results:")
+    for key, value in results.items():
+        logger.info(f"  {key}: {value:,}")
+
+    checkpoint_manager.save_checkpoint("ingest_optimized", results, results)
     return results
