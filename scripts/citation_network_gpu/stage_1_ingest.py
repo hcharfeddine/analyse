@@ -45,15 +45,21 @@ def _process_single_file_optimized(
         data_loader: PaperDataLoader instance
         node_mapping: NodeMapping instance for paper ID → node_id conversion
         field_mapping: FieldMapping instance for field name → field_id conversion
-        commit_every: Commit batch size
+        commit_every: Commit batch size (reduced from 50k to 10k for better throughput)
     
     Returns:
         (filename, num_papers, num_edges, paper_ids_with_edges)
     """
     conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA cache_size=-512000")
+    # FIXED: Optimized SQLite pragmas for write-heavy Stage 1 processing
+    # Changed from safety-first to performance-first configuration
+    conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging: better concurrency
+    conn.execute("PRAGMA synchronous=NORMAL")  # Balance safety & speed (not FULL during bulk insert)
+    conn.execute("PRAGMA cache_size=-1024000")  # Increased from 512MB to 1GB memory cache
+    conn.execute("PRAGMA temp_store=MEMORY")  # Use memory for temp tables (much faster)
+    conn.execute("PRAGMA mmap_size=30000000")  # Memory-mapped I/O: 30MB for faster reads/writes
+    conn.execute("PRAGMA page_size=4096")  # Standard 4KB pages
+    conn.execute("PRAGMA busy_timeout=30000")  # Wait up to 30s for locks
     cursor = conn.cursor()
     
     size_gb = json_file.stat().st_size / 1e9
@@ -143,7 +149,9 @@ def _process_single_file_optimized(
                 paper_ids_with_edges.add(ref_id)
         
         file_papers += 1
-        if file_papers % commit_every == 0:
+        # FIXED: More frequent commits (every 10k papers instead of 50k) for better throughput
+        # Smaller batches allow better interleaving of write operations across threads
+        if file_papers % max(1, commit_every // 5) == 0:  # Default: commit_every=50k → 10k papers
             flush()
             logger.info(f"[Worker] {json_file.name}: {file_papers:,} papers, {file_edges:,} edges")
     
@@ -191,9 +199,32 @@ def ingest_stage_optimized(config: PipelineConfig) -> Dict:
 
     checkpoint_manager = CheckpointManager(config.checkpoint_dir, config.enable_checkpointing)
     if checkpoint_manager.checkpoint_exists("ingest_optimized"):
-        logger.info("Found existing checkpoint, loading...")
+        logger.info("Found existing checkpoint, verifying completion...")
         cp = checkpoint_manager.load_checkpoint("ingest_optimized")
-        return cp.get("data", {})
+        
+        # FIXED: Verify that checkpoint is valid by checking database completion status
+        # This ensures resume doesn't return stale data if processing was interrupted
+        try:
+            temp_conn = sqlite3.connect(str(config.db_path))
+            temp_cursor = temp_conn.cursor()
+            
+            # Check if all expected files were processed
+            expected_files = sorted([f.name for f in PaperDataLoader(config.input_dir).json_files])
+            processed_files = {
+                r[0] for r in temp_cursor.execute(
+                    "SELECT filename FROM processed_files"
+                ).fetchall()
+            }
+            temp_conn.close()
+            
+            if processed_files >= set(expected_files):
+                logger.info(f"Checkpoint valid: All {len(expected_files)} files processed.")
+                return cp.get("data", {})
+            else:
+                missing = set(expected_files) - processed_files
+                logger.info(f"Checkpoint incomplete: {len(missing)} files not yet processed ({missing}). Resuming...")
+        except Exception as e:
+            logger.warning(f"Could not verify checkpoint status: {e}. Resuming fresh...")
 
     # Reset or create optimized database
     if config.reset_db:
@@ -325,3 +356,13 @@ def ingest_stage_optimized(config: PipelineConfig) -> Dict:
 
     checkpoint_manager.save_checkpoint("ingest_optimized", results, results)
     return results
+
+
+def ingest_papers(config: PipelineConfig) -> Dict:
+    """
+    Wrapper function for main_stages_1_2.py compatibility.
+    
+    This is an alias for ingest_stage_optimized() that matches the expected
+    function signature in main_stages_1_2.py.
+    """
+    return ingest_stage_optimized(config)

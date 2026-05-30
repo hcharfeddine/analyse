@@ -8,10 +8,15 @@ Key benefits:
   - Paper ID: "paper_123_abc" → node_id (integer)
   - Field of study: "Computer Science" → field_id (integer)
   - Reduces memory by 70-80% and improves computation speed by 50-80%
+
+THREAD SAFETY:
+  - NodeMapping and FieldMapping use RLock to prevent race conditions
+  - Safe for multi-threaded use with ThreadPoolExecutor
 """
 
 import logging
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -19,13 +24,17 @@ logger = logging.getLogger(__name__)
 
 
 class NodeMapping:
-    """Manages bidirectional mapping between paper IDs and integer node IDs."""
+    """Manages bidirectional mapping between paper IDs and integer node IDs.
+    
+    Thread-safe: Uses RLock for concurrent access in multi-threaded environments.
+    """
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
         self.paper_to_node: Dict[str, int] = {}  # Cached mapping for fast lookup
         self.node_to_paper: Dict[int, str] = {}  # Reverse mapping
         self.next_node_id = 0
+        self._lock = threading.RLock()  # Reentrant lock for thread safety
 
     def ensure_tables(self, conn: sqlite3.Connection) -> None:
         """Create mapping tables if they don't exist."""
@@ -65,15 +74,19 @@ class NodeMapping:
             logger.info(f"Loaded {len(rows)} existing paper ID mappings")
 
     def get_or_create_node_id(self, paper_id: str) -> int:
-        """Get existing node_id or create new one (in-memory only, not committed to DB yet)."""
-        if paper_id in self.paper_to_node:
-            return self.paper_to_node[paper_id]
+        """Get existing node_id or create new one (in-memory only, not committed to DB yet).
         
-        node_id = self.next_node_id
-        self.next_node_id += 1
-        self.paper_to_node[paper_id] = node_id
-        self.node_to_paper[node_id] = paper_id
-        return node_id
+        Thread-safe: Protected by RLock to prevent duplicate ID creation.
+        """
+        with self._lock:
+            if paper_id in self.paper_to_node:
+                return self.paper_to_node[paper_id]
+            
+            node_id = self.next_node_id
+            self.next_node_id += 1
+            self.paper_to_node[paper_id] = node_id
+            self.node_to_paper[node_id] = paper_id
+            return node_id
 
     def get_node_id(self, paper_id: str) -> Optional[int]:
         """Get node_id if it exists, None otherwise."""
@@ -122,13 +135,17 @@ class NodeMapping:
 
 
 class FieldMapping:
-    """Manages bidirectional mapping between field names and integer field IDs."""
+    """Manages bidirectional mapping between field names and integer field IDs.
+    
+    Thread-safe: Uses RLock for concurrent access in multi-threaded environments.
+    """
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
         self.field_to_id: Dict[str, int] = {}
         self.id_to_field: Dict[int, str] = {}
         self.next_field_id = 0
+        self._lock = threading.RLock()  # Reentrant lock for thread safety
 
     def ensure_tables(self, conn: sqlite3.Connection) -> None:
         """Create mapping tables if they don't exist."""
@@ -166,18 +183,22 @@ class FieldMapping:
             logger.info(f"Loaded {len(rows)} existing field mappings")
 
     def get_or_create_field_id(self, field_name: str) -> int:
-        """Get existing field_id or create new one (in-memory only)."""
+        """Get existing field_id or create new one (in-memory only).
+        
+        Thread-safe: Protected by RLock to prevent duplicate ID creation.
+        """
         if not field_name:
             return -1  # Special ID for empty/unknown field
         
-        if field_name in self.field_to_id:
-            return self.field_to_id[field_name]
-        
-        field_id = self.next_field_id
-        self.next_field_id += 1
-        self.field_to_id[field_name] = field_id
-        self.id_to_field[field_id] = field_name
-        return field_id
+        with self._lock:
+            if field_name in self.field_to_id:
+                return self.field_to_id[field_name]
+            
+            field_id = self.next_field_id
+            self.next_field_id += 1
+            self.field_to_id[field_name] = field_id
+            self.id_to_field[field_id] = field_name
+            return field_id
 
     def get_field_id(self, field_name: str) -> Optional[int]:
         """Get field_id if it exists, None otherwise."""

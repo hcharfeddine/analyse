@@ -125,3 +125,13 @@ def deduplicate_stage_optimized(config: PipelineConfig) -> Dict:
 
     checkpoint_manager.save_checkpoint("deduplicate_optimized", results, results)
     return results
+
+
+def deduplicate_edges(config: PipelineConfig) -> Dict:
+    """
+    Wrapper function for main_stages_1_2.py compatibility.
+    
+    This is an alias for deduplicate_stage_optimized() that matches the expected
+    function signature in main_stages_1_2.py.
+    """
+    return deduplicate_stage_optimized(config)
