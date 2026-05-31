@@ -59,6 +59,10 @@ def _parse_file(
             ";".join(paper.get("authors", [])),
             paper.get("abstract", ""),
             paper.get("cited_by_count", 0),
+            paper.get("doi", ""),
+            paper.get("publisher", ""),
+            paper.get("journal_name", ""),
+            paper.get("publication_type", ""),
         ))
 
         for ref_id in paper.get("citations", []):
@@ -109,11 +113,17 @@ def _writer_loop(db_path: Path, write_queue: queue.Queue, total_files: int) -> D
         ON CONFLICT(node_id) DO UPDATE SET year=COALESCE(excluded.year, graph_nodes.year)
     """
     INSERT_META = """
-        INSERT INTO paper_metadata (node_id, paper_id, title, authors, abstract, cited_by_count)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO paper_metadata
+            (node_id, paper_id, title, authors, abstract, cited_by_count,
+             doi, publisher, journal_name, publication_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(node_id) DO UPDATE SET
             title=COALESCE(excluded.title, paper_metadata.title),
-            cited_by_count=COALESCE(excluded.cited_by_count, paper_metadata.cited_by_count)
+            cited_by_count=COALESCE(excluded.cited_by_count, paper_metadata.cited_by_count),
+            doi=COALESCE(NULLIF(excluded.doi,''), paper_metadata.doi),
+            publisher=COALESCE(NULLIF(excluded.publisher,''), paper_metadata.publisher),
+            journal_name=COALESCE(NULLIF(excluded.journal_name,''), paper_metadata.journal_name),
+            publication_type=COALESCE(NULLIF(excluded.publication_type,''), paper_metadata.publication_type)
     """
     INSERT_EDGE = "INSERT OR IGNORE INTO graph_edges (source_id, target_id) VALUES (?, ?)"
 

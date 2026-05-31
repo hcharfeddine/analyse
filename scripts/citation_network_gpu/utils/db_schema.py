@@ -60,7 +60,11 @@ def create_optimized_schema(db_path: Path) -> sqlite3.Connection:
             title TEXT,
             authors TEXT,
             abstract TEXT,
-            cited_by_count INTEGER DEFAULT 0
+            cited_by_count INTEGER DEFAULT 0,
+            doi TEXT,
+            publisher TEXT,
+            journal_name TEXT,
+            publication_type TEXT
         )
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_paper_metadata_paper_id ON paper_metadata(paper_id)")

@@ -18,7 +18,14 @@ except ImportError:
     _IJSON = False
     logger.warning("ijson not installed — large files (>500 MB) will load fully into RAM. pip install ijson")
 
-REFERENCE_KEYS = ("references", "citations", "cited_papers", "refs", "outgoing_citations")
+REFERENCE_KEYS = (
+    "referenced_works",       # OpenAlex format  ← your data uses this
+    "references",
+    "citations",
+    "cited_papers",
+    "refs",
+    "outgoing_citations",
+)
 
 # Files below this size use fast full-load (orjson); above use ijson streaming.
 # Set to 500 MB to match the recommended chunk size from auto_chunk.py.
@@ -166,6 +173,10 @@ class PaperDataLoader:
             "citations": [c for c in citations if c != str(paper_id)],
             "cited_by_count": cited_by,
             "field_of_study": paper.get("field_of_study") or "",
+            "doi": paper.get("doi") or "",
+            "publisher": paper.get("publisher") or "",
+            "journal_name": paper.get("journal_name") or paper.get("venue") or "",
+            "publication_type": paper.get("publication_type") or paper.get("type") or "",
         }
 
     def _extract_authors(self, paper: Dict) -> List[str]:
@@ -180,7 +191,15 @@ class PaperDataLoader:
                 if isinstance(a, str):
                     result.append(a.strip())
                 elif isinstance(a, dict):
-                    name = a.get("name") or a.get("fullname") or a.get("display_name")
+                    # Try common name fields first; fall back to author_id (OpenAlex format
+                    # stores author_id but no display name inside the paper object itself)
+                    name = (
+                        a.get("name")
+                        or a.get("fullname")
+                        or a.get("display_name")
+                        or a.get("author_name")
+                        or a.get("author_id")    # last resort: use the ID as identifier
+                    )
                     if name:
                         result.append(str(name).strip())
             return result
