@@ -788,12 +788,12 @@ pnpm --filter @workspace/citation-network run dev
 
 ## Performance Summary
 
-| Bottleneck | Fix applied | Gain |
-|---|---|---|
-| Stage 1 SQLite lock contention | Producer-consumer: N parse threads + 1 write thread | Parsing fully parallel, zero lock contention |
-| Stage 1 write speed | `PRAGMA synchronous=OFF` during bulk ingest | 3–5x faster writes |
-| Stage 2 degree recalculation | `GROUP BY` temp table instead of O(N²) Python loop | ~100x faster for 54M papers |
-| Stage 3 edge loading | Stream directly to cuDF batches (never load all edges into Python) | Saves ~14 GB RAM, 2–3x faster |
-| Stage 4 OOM | Batched tiled repulsive forces instead of N×N matrix | 8 TB → manageable VRAM usage |
-| Stage 5 pagination | Keyset pagination (`WHERE rowid > ?`) instead of OFFSET | O(1) vs O(N) per page |
-| Large files (2–14 GB) | Auto-chunk to ≤500 MB + `make_subset.py` | ~10x faster parse per file |
+| Bottleneck | Fix applied 
+|---|---|
+| Stage 1 SQLite lock contention | Producer-consumer: N parse threads + 1 write thread |
+| Stage 1 write speed | `PRAGMA synchronous=OFF` during bulk ingest |
+| Stage 2 degree recalculation | `GROUP BY` temp table instead of O(N²) Python loop |
+| Stage 3 edge loading | Stream directly to cuDF batches (never load all edges into Python) |
+| Stage 4 OOM | Batched tiled repulsive forces instead of N×N matrix |
+| Stage 5 pagination | Keyset pagination (`WHERE rowid > ?`) instead of OFFSET |
+| Large files (2–14 GB) | Auto-chunk to ≤500 MB + `make_subset.py` |
