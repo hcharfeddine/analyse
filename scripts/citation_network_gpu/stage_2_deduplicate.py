@@ -1,14 +1,3 @@
-"""Stage 2 OPTIMIZED: Deduplicate edges using integer operations.
-
-This optimized version works with integer node IDs, which are much faster to
-process than text paper IDs. Since duplicates are already prevented by the
-PRIMARY KEY constraint on graph_edges, this stage mainly:
-  1. Validates edge consistency
-  2. Removes self-loops
-  3. Ensures all edge endpoints exist
-  4. Updates degree counters
-"""
-
 import logging
 import sqlite3
 from typing import Dict
@@ -19,106 +8,123 @@ from utils.checkpoint import CheckpointManager
 logger = logging.getLogger(__name__)
 
 
-def deduplicate_stage_optimized(config: PipelineConfig) -> Dict:
-    """
-    Stage 2 OPTIMIZED: Clean and validate edges using integer operations.
+def _recalculate_degrees(conn: sqlite3.Connection) -> None:
+    """Recalculate in/out degrees using temp-table GROUP BY aggregation — O(E log E)."""
+    cursor = conn.cursor()
 
-    Args:
-        config: Pipeline configuration.
-    Returns:
-        Results dictionary with deduplication statistics.
-    """
+    cursor.execute("UPDATE graph_nodes SET in_degree = 0, out_degree = 0")
+    conn.commit()
+
+    cursor.execute("""
+        CREATE TEMPORARY TABLE IF NOT EXISTS _tmp_out_degrees (
+            node_id INTEGER PRIMARY KEY,
+            cnt     INTEGER NOT NULL
+        )
+    """)
+    cursor.execute("INSERT INTO _tmp_out_degrees (node_id, cnt) SELECT source_id, COUNT(*) FROM graph_edges GROUP BY source_id")
+    conn.commit()
+    cursor.execute("""
+        UPDATE graph_nodes
+        SET out_degree = (SELECT cnt FROM _tmp_out_degrees WHERE node_id = graph_nodes.node_id)
+        WHERE node_id IN (SELECT node_id FROM _tmp_out_degrees)
+    """)
+    conn.commit()
+    cursor.execute("DROP TABLE IF EXISTS _tmp_out_degrees")
+
+    cursor.execute("""
+        CREATE TEMPORARY TABLE IF NOT EXISTS _tmp_in_degrees (
+            node_id INTEGER PRIMARY KEY,
+            cnt     INTEGER NOT NULL
+        )
+    """)
+    cursor.execute("INSERT INTO _tmp_in_degrees (node_id, cnt) SELECT target_id, COUNT(*) FROM graph_edges GROUP BY target_id")
+    conn.commit()
+    cursor.execute("""
+        UPDATE graph_nodes
+        SET in_degree = (SELECT cnt FROM _tmp_in_degrees WHERE node_id = graph_nodes.node_id)
+        WHERE node_id IN (SELECT node_id FROM _tmp_in_degrees)
+    """)
+    conn.commit()
+    cursor.execute("DROP TABLE IF EXISTS _tmp_in_degrees")
+    conn.commit()
+
+
+def deduplicate_stage_optimized(config: PipelineConfig) -> Dict:
     logger.info("=" * 60)
-    logger.info("STAGE 2 OPTIMIZED: DEDUPLICATE (INTEGER OPERATIONS)")
+    logger.info("STAGE 2: DEDUPLICATE (INTEGER OPERATIONS)")
     logger.info("=" * 60)
 
     checkpoint_manager = CheckpointManager(config.checkpoint_dir, config.enable_checkpointing)
     if checkpoint_manager.checkpoint_exists("deduplicate_optimized"):
         logger.info("Found existing checkpoint, loading...")
         cp = checkpoint_manager.load_checkpoint("deduplicate_optimized")
-        return cp.get("data", {})
+        if cp and "data" in cp:
+            return cp["data"]
 
     conn = sqlite3.connect(str(config.db_path))
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA cache_size=-512000")
     conn.execute("PRAGMA wal_autocheckpoint=50000")
-    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA busy_timeout=30000")
     cursor = conn.cursor()
 
-    # Get initial statistics
     total_nodes_before = cursor.execute("SELECT COUNT(*) FROM graph_nodes").fetchone()[0]
     total_edges_before = cursor.execute("SELECT COUNT(*) FROM graph_edges").fetchone()[0]
-    logger.info(f"Before dedup: {total_nodes_before:,} nodes, {total_edges_before:,} edges")
+    logger.info(f"Before: {total_nodes_before:,} nodes, {total_edges_before:,} edges")
 
-    # ────── REMOVE SELF-LOOPS ──────────────────────────────────────────
-    logger.info("Removing self-loop edges...")
+    logger.info("Removing self-loops...")
     cursor.execute("DELETE FROM graph_edges WHERE source_id = target_id")
     self_loops_removed = cursor.rowcount
     conn.commit()
-    logger.info(f"  Removed {self_loops_removed:,} self-loop edges")
 
-    # ────── REMOVE EDGES WITH MISSING ENDPOINTS ────────────────────────
-    logger.info("Removing edges with missing endpoints...")
+    logger.info("Removing edges with missing source nodes...")
     cursor.execute("""
         DELETE FROM graph_edges
-        WHERE source_id NOT IN (SELECT node_id FROM graph_nodes)
-           OR target_id NOT IN (SELECT node_id FROM graph_nodes)
+        WHERE NOT EXISTS (SELECT 1 FROM graph_nodes WHERE node_id = graph_edges.source_id)
     """)
-    dangling_removed = cursor.rowcount
+    dangling_source = cursor.rowcount
     conn.commit()
-    logger.info(f"  Removed {dangling_removed:,} dangling edges")
 
-    # ────── UPDATE DEGREE COUNTERS ─────────────────────────────────────
-    logger.info("Updating degree counters...")
-    
-    # Reset degree counters
-    cursor.execute("UPDATE graph_nodes SET in_degree = 0, out_degree = 0")
-    
-    # Recalculate in-degrees and out-degrees from edges
+    logger.info("Removing edges with missing target nodes...")
     cursor.execute("""
-        UPDATE graph_nodes SET out_degree = (
-            SELECT COUNT(*) FROM graph_edges WHERE source_id = graph_nodes.node_id
-        )
+        DELETE FROM graph_edges
+        WHERE NOT EXISTS (SELECT 1 FROM graph_nodes WHERE node_id = graph_edges.target_id)
     """)
-    
-    cursor.execute("""
-        UPDATE graph_nodes SET in_degree = (
-            SELECT COUNT(*) FROM graph_edges WHERE target_id = graph_nodes.node_id
-        )
-    """)
+    dangling_target = cursor.rowcount
     conn.commit()
-    logger.info("  Degree counters updated")
+    dangling_removed = dangling_source + dangling_target
 
-    # ────── GET FINAL STATISTICS ──────────────────────────────────────
+    logger.info("Recalculating degree counters...")
+    _recalculate_degrees(conn)
+
     total_nodes_after = cursor.execute("SELECT COUNT(*) FROM graph_nodes").fetchone()[0]
     total_edges_after = cursor.execute("SELECT COUNT(*) FROM graph_edges").fetchone()[0]
-    
-    # Statistics on degree distribution
-    avg_in_degree = cursor.execute("SELECT AVG(in_degree) FROM graph_nodes").fetchone()[0] or 0
-    avg_out_degree = cursor.execute("SELECT AVG(out_degree) FROM graph_nodes").fetchone()[0] or 0
-    
+    avg_in  = cursor.execute("SELECT AVG(in_degree)  FROM graph_nodes").fetchone()[0] or 0
+    avg_out = cursor.execute("SELECT AVG(out_degree) FROM graph_nodes").fetchone()[0] or 0
+
     cursor.execute(
         "INSERT OR REPLACE INTO processing_status (stage, status, timestamp, details) VALUES (?, ?, datetime('now'), ?)",
-        ("deduplicate_optimized", "completed", 
-         f"nodes={total_nodes_after}, edges={total_edges_after}, "
-         f"avg_in_degree={avg_in_degree:.2f}, avg_out_degree={avg_out_degree:.2f}"),
+        (
+            "deduplicate_optimized",
+            "completed",
+            f"nodes={total_nodes_after}, edges={total_edges_after}, avg_in={avg_in:.2f}, avg_out={avg_out:.2f}",
+        ),
     )
     conn.commit()
     conn.close()
 
     results = {
-        "total_nodes_before": total_nodes_before,
-        "total_edges_before": total_edges_before,
-        "self_loops_removed": self_loops_removed,
+        "total_nodes_before":     total_nodes_before,
+        "total_edges_before":     total_edges_before,
+        "self_loops_removed":     self_loops_removed,
         "dangling_edges_removed": dangling_removed,
-        "total_nodes_after": total_nodes_after,
-        "total_edges_after": total_edges_after,
-        "avg_in_degree": round(avg_in_degree, 2),
-        "avg_out_degree": round(avg_out_degree, 2),
+        "total_nodes_after":      total_nodes_after,
+        "total_edges_after":      total_edges_after,
+        "avg_in_degree":          round(avg_in, 2),
+        "avg_out_degree":         round(avg_out, 2),
     }
 
-    logger.info("")
     logger.info("Stage 2 Results:")
     for key, value in results.items():
         logger.info(f"  {key}: {value}")
@@ -128,10 +134,4 @@ def deduplicate_stage_optimized(config: PipelineConfig) -> Dict:
 
 
 def deduplicate_edges(config: PipelineConfig) -> Dict:
-    """
-    Wrapper function for main_stages_1_2.py compatibility.
-    
-    This is an alias for deduplicate_stage_optimized() that matches the expected
-    function signature in main_stages_1_2.py.
-    """
     return deduplicate_stage_optimized(config)

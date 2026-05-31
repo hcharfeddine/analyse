@@ -1,18 +1,3 @@
-"""
-GPU-accelerated Citation Network Pipeline Orchestrator.
-
-Main entry point for the complete citation network processing pipeline.
-
-Usage:
-    python main.py --input-dir /path/to/papers --db public/data/citation_network.db
-
-    # Resume from layout stage
-    python main.py --input-dir /path/to/papers --resume-from layout
-
-    # Use specific GPUs
-    python main.py --input-dir /path/to/papers --gpu-devices 0,1,2,3
-"""
-
 import logging
 import sys
 import time

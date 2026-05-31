@@ -1,29 +1,3 @@
-#!/usr/bin/env python3
-"""
-Main entry point for Stages 3-5: GPU Analysis and Export
-========================================================
-
-Runs after graph building (stages 1-2) is complete.
-
-Stages:
-  - Stage 3: Community Detection (GPU Louvain)
-  - Stage 4: Layout Computation (ForceAtlas2)
-  - Stage 5: Export with Pagination
-
-Usage:
-  python main_stages_3_5.py [--gpu-id 0] [--force-recompute]
-
-Prerequisites:
-  - Must run main_stages_1_2.py first
-  - Database must contain graph_nodes and graph_edges
-  - NVIDIA GPU recommended (CUDA 11.8+)
-
-Output:
-  - Community assignments
-  - Node positions (x, y)
-  - Paginated JSON exports
-"""
-
 import sys
 import argparse
 import logging

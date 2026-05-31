@@ -1,21 +1,3 @@
-"""Stage 5 OPTIMIZED: Export processed graph with cursor-based pagination.
-
-OPTIMIZATION 3: Cursor-based (Keyset) Pagination
-  
-  Problem: Original used OFFSET which is O(N) per query
-           At 500M edges, OFFSET 100M = skip 100M rows = seconds per page
-  
-  Solution: Use ROWID-based keyset pagination (WHERE rowid > last_rowid)
-           This is O(1) per query, instant even at billions of rows
-  
-  Result: 10–20x faster API queries, instant pagination
-  
-  Implementation:
-  - For edges: SELECT WHERE rowid > last_rowid ORDER BY rowid LIMIT N
-  - For nodes: SELECT WHERE paper_id > last_id ORDER BY paper_id LIMIT N
-  - Each query is O(1) index lookup, not sequential scan
-"""
-
 import json
 import logging
 import sqlite3

@@ -63,13 +63,13 @@ def check_pytorch():
         print(f"  ✓ PyTorch {torch.__version__:<25} Installed")
         
         if torch.cuda.is_available():
-            print(f"  ✓ CUDA available:<23} {torch.cuda.device_count()} device(s)")
+            print(f"  ✓ CUDA available:<23 {torch.cuda.device_count()} device(s)")
             for i in range(torch.cuda.device_count()):
                 props = torch.cuda.get_device_properties(i)
                 print(f"    GPU {i}: {props.name} ({props.total_memory / 1e9:.1f} GB)")
             return True
         else:
-            print(f"  ✗ CUDA NOT available<15} PyTorch can only use CPU")
+            print(f"  ✗ CUDA NOT available<15 PyTorch can only use CPU")
             return False
     except ImportError:
         print("  ✗ PyTorch NOT installed")

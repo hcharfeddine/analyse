@@ -1,9 +1,3 @@
-"""Streaming JSON data loader for academic papers.
-
-FIX: Original read entire file into RAM with f.read() — crashed on 50 GB year files.
-     Now uses orjson for speed + streams large files in chunks.
-"""
-
 import json
 import logging
 from pathlib import Path
@@ -16,9 +10,19 @@ try:
     _ORJSON = True
 except ImportError:
     _ORJSON = False
-    logger.warning("orjson not installed — using stdlib json (slower). Run: pip install orjson")
+
+try:
+    import ijson
+    _IJSON = True
+except ImportError:
+    _IJSON = False
+    logger.warning("ijson not installed — large files (>500 MB) will load fully into RAM. pip install ijson")
 
 REFERENCE_KEYS = ("references", "citations", "cited_papers", "refs", "outgoing_citations")
+
+# Files below this size use fast full-load (orjson); above use ijson streaming.
+# Set to 500 MB to match the recommended chunk size from auto_chunk.py.
+_FAST_LOAD_THRESHOLD = 500 * 1024 * 1024
 
 
 def _loads(data: bytes) -> object:
@@ -26,32 +30,23 @@ def _loads(data: bytes) -> object:
 
 
 class PaperDataLoader:
-    """Stream paper data from per-year JSON files without loading all into RAM."""
-
     def __init__(self, input_dir: Path, chunk_size: int = 4 * 1024 * 1024):
         self.input_dir = Path(input_dir)
         self.chunk_size = chunk_size
-
         if not self.input_dir.exists():
             raise ValueError(f"Input directory does not exist: {self.input_dir}")
-
         self.json_files = sorted(self.input_dir.glob("*.json"))
         logger.info(f"Found {len(self.json_files)} JSON files in {self.input_dir}")
 
     def iter_papers(self) -> Iterator[Dict]:
-        """Stream paper objects from all JSON files."""
         for json_file in self.json_files:
-            logger.info(f"Processing file: {json_file.name}  ({json_file.stat().st_size/1e9:.2f} GB)")
+            size_mb = json_file.stat().st_size / 1e6
+            logger.info(f"Processing file: {json_file.name}  ({size_mb:.0f} MB)")
             yield from self._iter_papers_from_file(json_file)
 
     def _iter_papers_from_file(self, file_path: Path) -> Iterator[Dict]:
-        """
-        Stream papers from a single JSON file.
-        Tries fast full-file parse first; falls back to streaming for huge files.
-        """
         size = file_path.stat().st_size
-        # For files < 2 GB, load fully (orjson is very fast at this)
-        if size < 2 * 1024 ** 3:
+        if size < _FAST_LOAD_THRESHOLD:
             try:
                 with open(file_path, "rb") as f:
                     raw = f.read()
@@ -60,13 +55,61 @@ class PaperDataLoader:
                 yield from self._extract_papers(obj, file_path.name)
                 return
             except Exception as e:
-                logger.warning(f"Fast load failed for {file_path.name}: {e} — trying streaming")
+                logger.warning(f"Fast load failed for {file_path.name}: {e} — falling back to streaming")
+        if _IJSON:
+            yield from self._stream_papers_ijson(file_path)
+        else:
+            logger.warning(f"{file_path.name} is {size/1e6:.0f} MB — loading fully into RAM (pip install ijson)")
+            yield from self._stream_papers_fullload_fallback(file_path)
 
-        # Streaming fallback for very large files
-        yield from self._stream_papers(file_path)
+    def _stream_papers_ijson(self, file_path: Path) -> Iterator[Dict]:
+        with open(file_path, "rb") as fh:
+            raw_start = fh.read(4096)
+            stripped = raw_start.lstrip()
+            fh.seek(0)
+            if stripped.startswith(b"["):
+                try:
+                    for item in ijson.items(fh, "item"):
+                        if isinstance(item, dict):
+                            norm = self._normalize_paper(item)
+                            if norm:
+                                yield norm
+                    return
+                except Exception as e:
+                    logger.warning(f"ijson array parse failed for {file_path.name}: {e}")
+                    fh.seek(0)
+            elif stripped.startswith(b"{"):
+                for key in ("papers", "nodes", "data", "results"):
+                    fh.seek(0)
+                    try:
+                        found = False
+                        for item in ijson.items(fh, f"{key}.item"):
+                            found = True
+                            if isinstance(item, dict):
+                                norm = self._normalize_paper(item)
+                                if norm:
+                                    yield norm
+                        if found:
+                            return
+                    except (ijson.JSONError, StopIteration, Exception):
+                        continue
+                logger.warning(f"No recognized paper array key found in {file_path.name}")
+            else:
+                logger.warning(f"Unrecognized JSON structure in {file_path.name}")
+
+    def _stream_papers_fullload_fallback(self, file_path: Path) -> Iterator[Dict]:
+        size_gb = file_path.stat().st_size / 1e9
+        logger.warning(f"Loading {size_gb:.2f} GB file fully into RAM (no ijson). Install ijson.")
+        try:
+            with open(file_path, "rb") as f:
+                raw = f.read()
+            obj = _loads(raw)
+            del raw
+            yield from self._extract_papers(obj, file_path.name)
+        except MemoryError:
+            logger.error(f"Out of memory loading {file_path.name} ({size_gb:.2f} GB). pip install ijson")
 
     def _extract_papers(self, obj, filename: str) -> Iterator[Dict]:
-        """Extract paper dicts from a parsed JSON object (list or dict wrapper)."""
         if isinstance(obj, list):
             papers = obj
         elif isinstance(obj, dict):
@@ -81,7 +124,6 @@ class PaperDataLoader:
                 return
         else:
             return
-
         for paper in papers:
             if not isinstance(paper, dict):
                 continue
@@ -89,63 +131,10 @@ class PaperDataLoader:
             if normalized:
                 yield normalized
 
-    def _stream_papers(self, file_path: Path) -> Iterator[Dict]:
-        """Streaming JSON parser for files too large for RAM."""
-        import json as _json
-        decoder = _json.JSONDecoder()
-
-        with open(file_path, "rb") as fh:
-            raw = fh.read()
-        text = raw.decode("utf-8", errors="replace")
-        del raw
-
-        # Find start of array
-        stripped = text.lstrip()
-        if stripped.startswith("["):
-            start = text.find("[") + 1
-        elif stripped.startswith("{"):
-            # Find first candidate key
-            found = -1
-            for key in ('"papers"', '"nodes"', '"data"', '"results"'):
-                pos = text.find(key)
-                if pos != -1:
-                    bracket = text.find("[", pos)
-                    if bracket != -1:
-                        found = bracket + 1
-                        break
-            if found == -1:
-                return
-            start = found
-        else:
-            return
-
-        buffer = text[start:]
-        del text
-
-        while True:
-            buffer = buffer.lstrip()
-            if not buffer or buffer[0] == "]":
-                break
-            if buffer[0] == ",":
-                buffer = buffer[1:]
-                continue
-            try:
-                item, idx = decoder.raw_decode(buffer)
-                if isinstance(item, dict):
-                    norm = self._normalize_paper(item)
-                    if norm:
-                        yield norm
-                buffer = buffer[idx:]
-            except _json.JSONDecodeError:
-                break
-
     def _normalize_paper(self, paper: Dict) -> Optional[Dict]:
-        """Normalize paper dict to standard format."""
         paper_id = paper.get("paper_id") or paper.get("id") or paper.get("openalex_id")
         if not paper_id:
             return None
-
-        # Citations / references
         citations = []
         for key in REFERENCE_KEYS:
             refs = paper.get(key)
@@ -158,19 +147,16 @@ class PaperDataLoader:
                         if rid:
                             citations.append(str(rid))
                 break
-
         year = paper.get("year")
         try:
             year = int(year) if year else None
         except (TypeError, ValueError):
             year = None
-
         cited_by = paper.get("cited_by_count") or paper.get("citation_count") or 0
         try:
             cited_by = int(cited_by)
         except (TypeError, ValueError):
             cited_by = 0
-
         return {
             "id": str(paper_id),
             "title": paper.get("title") or "",
@@ -201,13 +187,10 @@ class PaperDataLoader:
         return []
 
     def get_file_stats(self) -> Dict[str, int]:
-        """Return file sizes (in bytes) without iterating all papers."""
         return {f.name: f.stat().st_size for f in self.json_files}
 
 
 class GraphBuilder:
-    """Build graph structures from paper citation data (used in Stage 1)."""
-
     def __init__(self):
         self.nodes: Dict[str, Dict] = {}
         self.edges: List[tuple] = []
@@ -233,7 +216,4 @@ class GraphBuilder:
                 self._edge_set.add(edge)
 
     def get_graph_stats(self) -> Dict:
-        return {
-            "num_nodes": len(self.nodes),
-            "num_edges": len(self.edges),
-        }
+        return {"num_nodes": len(self.nodes), "num_edges": len(self.edges)}

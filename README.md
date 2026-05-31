@@ -1,739 +1,799 @@
-# Citation Network - Server Setup Guide
+# Citation Network — Complete Setup Guide
 
-Complete step-by-step guide to set up and run the GPU-accelerated citation network pipeline on your server. This guide assumes you have the metadata papers ready to add to the repository.
-
----
-
-## 📋 Table of Contents
-
-1. [Pre-Flight Checklist](#pre-flight-checklist)
-2. [Clone Repository](#clone-repository)
-3. [Add Metadata (Papers)](#add-metadata-papers)
-4. [Setup Python Environment](#setup-python-environment)
-5. [Install Dependencies](#install-dependencies)
-6. [Configure Pipeline](#configure-pipeline)
-7. [Run Test (Optional)](#run-test-optional)
-8. [Run Full Pipeline](#run-full-pipeline)
-9. [Monitor Progress](#monitor-progress)
-10. [Verify Results](#verify-results)
-11. [Troubleshooting](#troubleshooting)
-12. [Performance Tuning](PERFORMANCE_TUNING.md) — Optimize Stages 1–2 with CPU workers, WAL pragmas, and NVMe storage
+End-to-end guide: raw paper JSON files → fully running web visualization.
 
 ---
 
-## ✅ Pre-Flight Checklist
+## Table of Contents
 
-Before you start, verify your server has the required resources:
+1. [Server Requirements](#1-server-requirements)
+2. [Clone the Repository](#2-clone-the-repository)
+3. [Paper Data — Format & Directory](#3-paper-data--format--directory)
+4. [Handle Large Files: Subsets & Auto-Chunking](#4-handle-large-files-subsets--auto-chunking)
+5. [Python Environment](#5-python-environment)
+6. [Install Python Dependencies](#6-install-python-dependencies)
+7. [GPU Setup (RAPIDS — Critical for Performance)](#7-gpu-setup-rapids--critical-for-performance)
+8. [Pipeline: Stage 1–2 — Ingest & Deduplicate](#8-pipeline-stage-12--ingest--deduplicate)
+9. [Pipeline: Stage 3–5 — Community, Layout & Export](#9-pipeline-stage-35--community-layout--export)
+10. [Verify Pipeline Output](#10-verify-pipeline-output)
+11. [Run the Web App](#11-run-the-web-app)
+12. [Run in Background (Long Jobs)](#12-run-in-background-long-jobs)
+13. [Monitor Progress](#13-monitor-progress)
+14. [Troubleshooting](#14-troubleshooting)
+15. [Quick Reference — All Commands](#15-quick-reference--all-commands)
+
+---
+
+## 1. Server Requirements
+
+| Resource | Minimum | Recommended |
+|---|---|---|
+| **RAM** | 16 GB | 32+ GB (NodeMapping uses 3–6 GB for 54M papers) |
+| **CPU** | 8 cores | 16+ cores (Stage 1 parse workers scale with cores) |
+| **GPU** | Optional | NVIDIA RTX / A-series with CUDA 11.8+ (Stage 3–4) |
+| **VRAM** | — | 20+ GB per GPU for 54M-paper graphs |
+| **Disk** | 200 GB free | 500+ GB free (DB + raw JSON + chunks) |
+| **Python** | 3.9+ | 3.11 |
 
 ```bash
-# Check Python version (need 3.8+)
-python3 --version
-
-# Check CUDA (need 11.8+)
-nvcc --version
-
-# Check GPUs available
-nvidia-smi
-
-# Check system RAM
-free -h
-
-# Check disk space (need 500GB+ free)
-df -h /
-
-# Check git installed
-git --version
+# Verify before starting
+python3 --version          # need 3.9+
+nvcc --version             # CUDA version (11.x or 12.x)
+nvidia-smi                 # GPU count and VRAM
+free -h                    # available RAM
+df -h /                    # free disk space
 ```
 
-**All green?** Let's proceed! ✅
-
 ---
 
-## 🔄 Clone Repository
-
-Start by cloning the project from GitHub to your server:
+## 2. Clone the Repository
 
 ```bash
-# Clone the repository
 git clone https://github.com/hcharfeddine/Citation_Network.git
+cd Citation_Network
+```
 
-# Navigate to project
-cd Citation_Network-main
+The project layout:
+
+```
+Citation_Network/
+├── citation_network_gpu/       ← Python pipeline (all 5 stages)
+│   ├── main_stages_1_2.py      ← run Stage 1 + 2
+│   ├── main_stages_3_5.py      ← run Stage 3 + 4 + 5
+│   ├── main.py                 ← run all 5 stages at once
+│   ├── auto_chunk.py           ← automatic 500 MB file splitter
+│   ├── make_subset.py          ← create representative subsets for testing
+│   ├── config.py               ← PipelineConfig dataclass + CLI args
+│   ├── stage_1_ingest.py       ← JSON → SQLite (producer-consumer)
+│   ├── stage_2_deduplicate.py  ← remove duplicate edges
+│   ├── stage_3_community.py    ← GPU Louvain community detection
+│   ├── stage_4_layout.py       ← GPU ForceAtlas2 / igraph DRL layout
+│   ├── stage_5_export.py       ← export graph_preview.json
+│   └── utils/                  ← checkpoint, node_mapping, data_loader, ...
+├── artifacts/
+│   ├── citation-network/       ← React + Vite frontend
+│   └── api-server/             ← Express 5 API server
+└── public/data/                ← pipeline writes final output here
 ```
 
 ---
 
-## 📁 Add Metadata (Papers)
+## 3. Paper Data — Format & Directory
 
-Your papers need to be in the correct directory structure before running the pipeline.
-
-### Step 1: Create Directory for Papers
-
-```bash
-# Create the metadata directory
-mkdir -p data/papers
-
-# Verify it's created
-ls -la data/
-```
-
-### Step 2: Add Your Paper JSON Files
-
-Your papers should be organized by year in JSON format:
+### Expected directory layout
 
 ```
 data/papers/
-├── 1908.json
-├── 1909.json
+├── 1990.json
+├── 1991.json
 ├── ...
 ├── 2023.json
 └── 2024.json
 ```
 
-Each JSON file should contain an array of papers:
+Files can be named anything — the pipeline reads all `.json` files from the directory.
+The year filter in `make_subset.py` extracts the year from the filename (e.g. `2020.json`).
+
+### Each file is a JSON array of paper objects
 
 ```json
 [
   {
-    "id": "paper_123",
-    "title": "Example Paper Title",
-    "authors": ["Author A", "Author B"],
+    "id": "paper_abc123",
+    "title": "Deep Learning for Graph Analysis",
+    "authors": ["Alice Smith", "Bob Jones"],
     "year": 2020,
-    "abstract": "This is the paper abstract...",
-    "citations": ["paper_456", "paper_789"]
-  },
-  {
-    "id": "paper_456",
-    "title": "Another Paper",
-    "authors": ["Author C"],
-    "year": 2020,
-    "abstract": "...",
-    "citations": []
+    "abstract": "We propose a novel...",
+    "field_of_study": "Computer Science",
+    "cited_by_count": 142,
+    "citations": ["paper_def456", "paper_ghi789"]
   }
 ]
 ```
 
-### Step 3: Verify Papers Are in Place
+**Required fields:** `id`, `citations`
+**Optional but used:** `title`, `authors`, `year`, `abstract`, `field_of_study`, `cited_by_count`
 
 ```bash
-# Check number of JSON files
-ls -la data/papers/ | wc -l
+mkdir -p data/papers
 
-# Check total papers (rough count)
-find data/papers -name "*.json" -exec wc -l {} +
-
-# Sample first paper (verify structure)
-head -c 500 data/papers/2020.json
+# Verify your files are readable
+python3 -c "
+import json, pathlib
+f = list(pathlib.Path('data/papers').glob('*.json'))[0]
+papers = json.load(open(f))
+print(f'First file: {f.name}  |  {len(papers):,} papers')
+print('Keys:', list(papers[0].keys()))
+"
 ```
-
-✅ Papers should now be ready!
 
 ---
 
-## 🐍 Setup Python Environment
+## 4. Handle Large Files: Subsets & Auto-Chunking
 
-Create an isolated Python environment for the citation network:
+> **Why this matters:** Files from 2000–2024 are often 2–14 GB each. The pipeline
+> auto-chunks anything over 500 MB at startup, but creating year-filtered subsets
+> first is the fastest way to benchmark and verify your setup before a full run.
 
-### Step 1: Create Virtual Environment
+### Option A — Create subsets first (recommended for testing)
+
+`make_subset.py` reads a fraction of each file so you can test the full pipeline
+end-to-end in minutes instead of hours.
 
 ```bash
-# Navigate to citation network directory
-cd scripts/citation_network_gpu
+cd citation_network_gpu
 
-# Create virtual environment
+# Subset all files from year 2000 onward → writes *_sample.json next to originals
+python make_subset.py --input-dir ../data/papers/ --year-min 2000
+
+# Subset all files >= 2 GB (2000 MB threshold)
+python make_subset.py --input-dir ../data/papers/ --min-size 2000
+
+# Subset years 2000–2024, output to a separate folder (keeps originals untouched)
+python make_subset.py \
+    --input-dir ../data/papers/ \
+    --year-min 2000 --year-max 2024 \
+    --output-dir /tmp/subsets/
+
+# Single file
+python make_subset.py \
+    --input ../data/papers/2020.json \
+    --output /tmp/2020_sample.json
+```
+
+Typical output:
+
+```
+File                      Source     Subset    Papers
+------------------------------------------------------
+2020.json                 9.2 GB     499 MB    3,400,000
+2021.json                11.4 GB     499 MB    3,900,000
+2022.json                13.0 GB     500 MB    4,200,000
+```
+
+Then run the pipeline on the subsets to validate before committing to a full run:
+
+```bash
+python main_stages_1_2.py --input-dir /tmp/subsets/ --no-auto-chunk
+```
+
+### Option B — Auto-chunking (built into the pipeline)
+
+Any file over 500 MB is **automatically split** into <=500 MB chunks before
+Stage 1 starts. The original file is replaced by `*_chunk_000.json`, `*_chunk_001.json`, etc.
+
+```bash
+# Auto-chunk runs by default — no flags needed
+python main_stages_1_2.py --input-dir ../data/papers/
+
+# Disable if files are already chunked
+python main_stages_1_2.py --input-dir ../data/papers/ --no-auto-chunk
+
+# Custom chunk size (default 500 MB)
+python main_stages_1_2.py --input-dir ../data/papers/ --chunk-size 250
+```
+
+You can also chunk manually without running the pipeline:
+
+```bash
+python auto_chunk.py --input-dir ../data/papers/ --max-mb 500
+```
+
+---
+
+## 5. Python Environment
+
+```bash
+cd citation_network_gpu
+
+# Create isolated environment
 python3 -m venv venv
 
-# Output should show:
-# created virtual environment CPython3.x.x
-```
-
-### Step 2: Activate Virtual Environment
-
-```bash
-# Activate (Linux/macOS)
+# Activate (Linux / macOS)
 source venv/bin/activate
 
-# You should see (venv) at the start of your terminal prompt
+# Confirm
+which python        # should end with .../venv/bin/python
+python --version    # 3.9+
 ```
-
-### Step 3: Verify Environment
-
-```bash
-# Check Python path
-which python
-# Should show: .../venv/bin/python
-
-# Check Python version
-python --version
-# Should show: 3.8+
-```
-
-✅ Environment ready!
 
 ---
 
-## 📦 Install Dependencies
-
-Install all required packages (this takes 15-30 minutes):
-
-### Step 1: Upgrade pip
+## 6. Install Python Dependencies
 
 ```bash
+# Always activate the environment first
+source venv/bin/activate
+
+# Upgrade pip
 pip install --upgrade pip setuptools wheel
-```
 
-### Step 2: Install Requirements
-
-```bash
-# Make sure you're in scripts/citation_network_gpu directory
-pwd
-# Should end with: .../scripts/citation_network_gpu
-
-# Install all dependencies
+# Install CPU / base packages
 pip install -r requirements.txt
 
-# This will take 15-30 minutes depending on your internet speed
+# Verify critical imports
+python -c "import orjson;   print('OK orjson')"
+python -c "import igraph;   print('OK igraph')"
+python -c "import networkx; print('OK networkx')"
+python -c "import sqlite3;  print('OK sqlite3')"
 ```
 
-### Step 3: Verify Installation
+Key packages in `requirements.txt`:
 
-```bash
-# Test critical imports (run each one)
-python -c "import torch; print('✓ PyTorch OK')"
-python -c "import pandas; print('✓ Pandas OK')"
-python -c "import networkx; print('✓ NetworkX OK')"
-python -c "import sqlite3; print('✓ SQLite OK')"
-
-# All should print ✓ ... OK
-```
-
-**If any import fails:**
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-✅ All dependencies installed!
+| Package | Purpose |
+|---|---|
+| `orjson` | 5–10x faster JSON parsing than stdlib json |
+| `igraph` | CPU layout (DRL) — fast multi-threaded fallback for Stage 4 |
+| `python-louvain` | CPU Louvain community detection fallback for Stage 3 |
+| `networkx` | Graph utilities |
+| `torch` | GPU tensor support (install separately — see next section) |
 
 ---
 
-## ⚡ GPU Acceleration Setup (CRITICAL FOR PERFORMANCE!)
+## 7. GPU Setup (RAPIDS — Critical for Performance)
 
-**⚠️ IMPORTANT:** Without RAPIDS, processing takes MONTHS instead of hours. Do this step now!
+> Without GPU acceleration, Stage 3 (community detection) and Stage 4 (layout)
+> fall back to CPU. CPU works for graphs under ~1M nodes; for 54M papers it takes
+> days instead of hours. Stages 1 and 2 are CPU-only regardless.
 
-### Step 1: Check Your CUDA Version
+### Step 1 — Install PyTorch for your CUDA version
 
 ```bash
-# Check which CUDA version you have
+# Check your CUDA version
 nvcc --version
+# e.g. "Cuda compilation tools, release 12.1"
 
-# Look for output like: "Cuda compilation tools, release 12.x"
-# OR: "Cuda compilation tools, release 11.x"
+# CUDA 12.x (RTX 4090, A100, H100)
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# CUDA 11.x
+pip install torch --index-url https://download.pytorch.org/whl/cu118
 ```
 
-### Step 2: Install RAPIDS (Choose One Below)
+### Step 2 — Install RAPIDS (cuDF + cuGraph)
 
-**For CUDA 12.x:**
 ```bash
-pip install cudf-cu12 cugraph-cu12
-# This takes 10-15 minutes
+# CUDA 12.x
+pip install --extra-index-url=https://pypi.nvidia.com cugraph-cu12 cuml-cu12
+
+# CUDA 11.x
+pip install --extra-index-url=https://pypi.nvidia.com cugraph-cu11 cuml-cu11
 ```
 
-**For CUDA 11.x:**
-```bash
-pip install cudf-cu11 cugraph-cu11
-# This takes 10-15 minutes
-```
-
-### Step 3: Verify GPU Setup
+### Step 3 — Verify
 
 ```bash
-# Run diagnostic script to confirm everything is working
 python diagnose_gpu.py
-
-# Expected output should show:
-# ✓ CUDA available: X GPU(s) detected
-# ✓ RAPIDS (cudf + cugraph) available
-# ✓ GPU ForceAtlas2 ready for Stage 4
-
-# If something shows ✗, that's a problem - review GPU_TROUBLESHOOTING.md
-```
-
----
-
-## ⚙️ Configure Pipeline
-
-Review and adjust the pipeline configuration:
-
-### Step 1: View Configuration
-
-```bash
-# Check current settings
-cat config.py
-
-# Key settings:
-# BATCH_SIZE: Number of papers per batch (50,000)
-# NUM_WORKERS: Number of parallel workers (8)
-# GPU_MEMORY_LIMIT: GB per GPU (20)
-```
-
-### Step 2: Adjust Settings (if needed)
-
-If your server has different specs, edit the config:
-
-```bash
-# Using nano editor (easier)
-nano config.py
-
-# Or using vim
-vim config.py
-```
-
-**Common adjustments:**
-
-- **Fewer GPUs?** Set `PARALLEL_WORKERS = 4` (or your GPU count)
-- **Lower RAM?** Set `BATCH_SIZE = 25000` (reduce from 50,000)
-- **More disk space?** Keep default settings
-
-After editing, save and exit.
-
-### Step 3: Create Output Directory
-
-```bash
-# Create directory for results
-mkdir -p public/data
-
-# Verify
-ls -la public/
-```
-
-✅ Configuration complete!
-
----
-
-## 🧪 Run Test (Optional)
-
-Before running on all papers, test with a small sample (recommended):
-
-### Step 1: Create Test Data
-
-```bash
-# Copy just one year for testing
-mkdir -p /tmp/test_papers
-cp ../../data/papers/2020.json /tmp/test_papers/
-
-# Verify
-ls -la /tmp/test_papers/
-```
-
-### Step 2: Run Test Pipeline
-
-```bash
-# Make sure virtual environment is still active
-source venv/bin/activate
-
-# Run test (should take 5-10 minutes for 1 year)
-python main.py \
-  --input-dir /tmp/test_papers \
-  --db /tmp/test_citation_network.db \
-  --num-gpus 8 \
-  --verbose
-```
-
-### Step 3: Check Test Results
-
-```bash
-# Verify database was created
-ls -lh /tmp/test_citation_network.db
-
-# Count papers in test database
-sqlite3 /tmp/test_citation_network.db "SELECT COUNT(*) FROM nodes;"
-
-# Check output files
-ls -lh /tmp/
-# Should show test_citation_network.db and JSON files
-```
-
-✅ Test successful? Great! Move to full pipeline.
-
----
-
-## 🚀 Run Full Pipeline
-
-Time to process all papers!
-
-### Step 1: Prepare
-
-```bash
-# Activate environment
-source venv/bin/activate
-
-# Verify input directory
-ls -la ../../data/papers/ | head -10
-
-# Verify output directory exists
-mkdir -p public/data
-```
-
-### Step 2: Start Pipeline
-
-```bash
-# Run the full citation network pipeline
-# This will take 5-7 hours for large datasets
-python main.py \
-  --input-dir ../../data/papers \
-  --db public/data/citation_network.db \
-  --num-gpus 8 \
-  --verbose
 
 # Expected output:
-# [INFO] Stage 1: Ingesting papers...
-# [PROGRESS] Processing...
-# [INFO] Stage 2: Deduplicating edges...
-# [INFO] Stage 3: Community detection...
-# [INFO] Stage 4: Computing layout...
-# [INFO] Stage 5: Exporting...
-# [INFO] PIPELINE COMPLETE!
+#   OK  CUDA available — N GPU(s) detected
+#   OK  RAPIDS cudf + cugraph available
+#   OK  GPU ForceAtlas2 (Stage 4) ready
 ```
 
-### Step 3: Run in Background (Recommended)
+If `diagnose_gpu.py` reports issues, the pipeline still runs — it falls back to
+`igraph DRL` (CPU, multi-threaded) for layout and `python-louvain` for community
+detection automatically. No configuration needed.
 
-If you want to close your terminal, use one of these methods:
+---
 
-**Option A: Using nohup**
+## 8. Pipeline: Stage 1–2 — Ingest & Deduplicate
+
+### What each stage does
+
+| Stage | What it does | Output |
+|---|---|---|
+| **Stage 1** | Parse JSON files into SQLite (`graph_nodes`, `paper_metadata`, `graph_edges`). | `citation_network.db` |
+| **Stage 2** | Remove duplicate `(source, target)` edge pairs, recount degrees via GROUP BY. | Updated `graph_edges` |
+
+### Architecture — why Stage 1 is fast
+
+Stage 1 uses a **producer-consumer** pattern:
+
+- **N parse workers** (one per CPU core, capped at file count): pure JSON parsing + in-memory node ID mapping. Fully parallel. Zero SQLite access.
+- **1 write thread**: the sole owner of the SQLite connection. No lock contention, no `database is locked` errors. Parse workers back-pressure automatically via a bounded queue (64 slots).
+- `PRAGMA synchronous=OFF` during bulk ingest (3–5x faster writes). Automatically restored to `NORMAL` when ingest finishes. Safe — data can always be regenerated from source files.
+
+### Run Stage 1 + 2
+
 ```bash
-nohup python main.py \
-  --input-dir ../../data/papers \
-  --db public/data/citation_network.db \
-  --num-gpus 8 \
-  --verbose > pipeline.log 2>&1 &
+cd citation_network_gpu
+source venv/bin/activate
 
-# Check status anytime:
-tail -f pipeline.log
+# Basic run (auto-chunk is on by default)
+python main_stages_1_2.py \
+    --input-dir ../data/papers/ \
+    --db-path ../public/data/citation_network.db
+
+# All options
+python main_stages_1_2.py \
+    --input-dir ../data/papers/ \
+    --db-path ../public/data/citation_network.db \
+    --batch-size 10000 \      # papers per internal flush batch (default 10000)
+    --chunk-size 500 \        # auto-chunk threshold in MB (default 500)
+    --no-auto-chunk \         # skip auto-chunking if files are already split
+    --reset-db                # wipe DB and start from scratch
 ```
 
-**Option B: Using tmux**
+### Checkpoint / resume
+
+Stage 1 checkpoints after every file. If the process is killed or crashes, restart
+with the exact same command — already-processed files are skipped automatically.
+
 ```bash
-# Create new tmux session
-tmux new-session -d -s citation-pipeline
+# Resume after crash (default behaviour — no flag needed)
+python main_stages_1_2.py \
+    --input-dir ../data/papers/ \
+    --db-path ../public/data/citation_network.db
+
+# Force a full restart (wipes DB)
+python main_stages_1_2.py \
+    --input-dir ../data/papers/ \
+    --db-path ../public/data/citation_network.db \
+    --reset-db
+```
+
+### Expected timing
+
+| Scale | Parse workers | Stage 1 | Stage 2 |
+|---|---|---|---|
+| 1 year file (~500 MB subset) | 1 | 5–10 min | 1–2 min |
+| 10 year files (~5 GB subsets) | 8–10 | 30–60 min | 5–10 min |
+| Full 2000–2024 (54M papers, 2–14 GB/file) | 16 | 3–6 h | 30–60 min |
+
+### Quick check after Stage 1–2
+
+```bash
+sqlite3 ../public/data/citation_network.db "
+  SELECT 'nodes',             COUNT(*) FROM graph_nodes;
+  SELECT 'edges',             COUNT(*) FROM graph_edges;
+  SELECT 'metadata rows',     COUNT(*) FROM paper_metadata;
+  SELECT 'files processed',   COUNT(*) FROM processed_files;
+"
+```
+
+---
+
+## 9. Pipeline: Stage 3–5 — Community, Layout & Export
+
+### What each stage does
+
+| Stage | What it does | GPU? | Output |
+|---|---|---|---|
+| **Stage 3** | Louvain community detection — groups papers into research clusters | Yes (cuGraph) | `community_id` column in `graph_nodes` |
+| **Stage 4** | ForceAtlas2 / DRL layout — computes (x, y) position for every node | Yes (cuGraph) | `x`, `y` columns in `graph_nodes` |
+| **Stage 5** | Export top N nodes + edges to `graph_preview.json` for the browser | No | `public/data/graph_preview.json` |
+
+### Run Stage 3 + 4 + 5
+
+```bash
+cd citation_network_gpu
+source venv/bin/activate
+
+# Standard run (GPU 0 by default)
+python main_stages_3_5.py \
+    --db-path ../public/data/citation_network.db \
+    --export-dir ../public/data/
+
+# Use a specific GPU
+python main_stages_3_5.py --db-path ../public/data/citation_network.db --gpu-id 1
+
+# Force recompute (ignore existing checkpoints)
+python main_stages_3_5.py --db-path ../public/data/citation_network.db --force-recompute
+
+# Skip export (only redo community + layout)
+python main_stages_3_5.py --db-path ../public/data/citation_network.db --skip-export
+```
+
+### GPU fallback chain (automatic — no config needed)
+
+```
+cuGraph ForceAtlas2 (GPU)          ← preferred; handles 100M+ nodes
+    if unavailable:
+Batched Fruchterman-Reingold (GPU) ← tiled to avoid OOM on large graphs
+    if unavailable:
+igraph DRL (CPU, multi-threaded)   ← best CPU option for large graphs
+```
+
+### Run all 5 stages in one command
+
+```bash
+python main.py \
+    --input-dir ../data/papers/ \
+    --db ../public/data/citation_network.db \
+    --num-gpus 8 \
+    --verbose
+```
+
+---
+
+## 10. Verify Pipeline Output
+
+```bash
+# 1. Database integrity
+sqlite3 public/data/citation_network.db "PRAGMA integrity_check;"
+# Should print: ok
+
+# 2. Counts
+sqlite3 public/data/citation_network.db "
+  SELECT 'nodes',              COUNT(*)                   FROM graph_nodes;
+  SELECT 'edges',              COUNT(*)                   FROM graph_edges;
+  SELECT 'communities',        COUNT(DISTINCT community_id) FROM graph_nodes;
+  SELECT 'nodes with layout',  COUNT(*) FROM graph_nodes WHERE x IS NOT NULL;
+"
+
+# 3. Inspect the export
+python3 -c "
+import json
+data = json.load(open('public/data/graph_preview.json'))
+print(f'Nodes   : {len(data[\"nodes\"]):,}')
+print(f'Edges   : {len(data[\"edges\"]):,}')
+print(f'Clusters: {len(set(n[\"cluster\"] for n in data[\"nodes\"])):,}')
+print(f'Size    : {len(json.dumps(data)) / 1e6:.1f} MB')
+"
+
+# 4. List generated files
+ls -lh public/data/
+# Should include:
+#   citation_network.db
+#   graph_preview.json
+```
+
+---
+
+## 11. Run the Web App
+
+The web app has two parts: an **Express API server** and a **React + Vite frontend**.
+Both must be running at the same time.
+
+### File placement
+
+The API server reads from `public/data/` at the project root:
+
+```
+Citation_Network/
+└── public/
+    └── data/
+        ├── graph_preview.json       ← required (network graph view)
+        ├── citation_network.db      ← required (search + paper details)
+        └── map_manifest.json        ← optional (map view only)
+```
+
+If you ran Stage 5 with `--export-dir ../public/data/`, the files are already here.
+
+### Terminal A — API Server (port 8080)
+
+```bash
+# From workspace root
+pnpm --filter @workspace/api-server run dev
+```
+
+Expected:
+```
+[INFO] API server running on port 8080
+[INFO] Loaded graph_preview.json — 500,000 nodes, 4,800,000 edges
+```
+
+Test the API:
+```bash
+curl http://localhost:8080/api/graph/stats
+# {"nodeCount":500000,"edgeCount":4800000,"communities":12}
+
+curl "http://localhost:8080/api/search?q=deep+learning"
+# {"papers":[...]}
+```
+
+### Terminal B — Frontend (React + Vite)
+
+```bash
+# From workspace root
+pnpm --filter @workspace/citation-network run dev
+```
+
+Open the URL shown in terminal output (e.g. `http://localhost:5173`).
+
+### Available API routes
+
+| Method | Route | Description |
+|---|---|---|
+| `GET` | `/api/graph/stats` | Node / edge / community counts |
+| `GET` | `/api/graph/nodes` | Paginated node list |
+| `GET` | `/api/graph/nodes/:id` | Single node by integer ID |
+| `GET` | `/api/graph/load` | Full preview graph JSON |
+| `GET` | `/api/paper/:paperId` | Paper detail (title, abstract, authors, DOI) |
+| `GET` | `/api/search?q=...` | Full-text search by title / abstract / keywords |
+| `GET` | `/api/map/manifest` | Map tile manifest |
+| `GET` | `/api/map/tile/:z/:x/:y` | Map tile image |
+
+---
+
+## 12. Run in Background (Long Jobs)
+
+For a full 54M-paper run (3–10 hours), use one of these methods to survive
+terminal disconnects.
+
+### tmux (recommended)
+
+```bash
+# Create session
+tmux new-session -d -s pipeline
 
 # Attach to it
-tmux attach -t citation-pipeline
+tmux attach -t pipeline
 
-# In the session, run:
-source venv/bin/activate
-python main.py --input-dir ../../data/papers --db public/data/citation_network.db --num-gpus 8 --verbose
+# Inside the session:
+cd citation_network_gpu && source venv/bin/activate
+python main_stages_1_2.py --input-dir ../data/papers/ --db-path ../public/data/citation_network.db
 
-# Detach: Ctrl+B then D
+# Detach without killing: Ctrl+B then D
+# Reattach later:
+tmux attach -t pipeline
 ```
 
-**Option C: Using screen**
+### nohup
+
 ```bash
-# Create new screen session
-screen -S citation-pipeline
+cd citation_network_gpu && source venv/bin/activate
 
-# In the session, run:
+nohup python main_stages_1_2.py \
+    --input-dir ../data/papers/ \
+    --db-path ../public/data/citation_network.db \
+    > stage12.log 2>&1 &
+
+echo "PID: $!"
+tail -f stage12.log
+```
+
+### screen
+
+```bash
+screen -S pipeline
 source venv/bin/activate
-python main.py --input-dir ../../data/papers --db public/data/citation_network.db --num-gpus 8 --verbose
-
+python main_stages_1_2.py --input-dir ../data/papers/ --db-path ../public/data/citation_network.db
 # Detach: Ctrl+A then D
+# Reattach: screen -r pipeline
 ```
 
 ---
 
-## 📊 Monitor Progress
+## 13. Monitor Progress
 
-While the pipeline runs, monitor it in separate terminals:
-
-### Terminal 1: Watch GPU Usage (CRITICAL!)
+### GPU utilization (Stage 3–4)
 
 ```bash
-# Monitor GPU in detail (shows per-process GPU usage)
-nvidia-smi dmon -s puctem
-
-# OR for simpler view
+# Live view (every 1 s)
 watch -n 1 nvidia-smi
 
-# IMPORTANT: You should see:
-# - GPU Memory Usage increasing (means data is on GPU)
-# - GPU Utilization 80-99% (means GPU is being used)
-# - Process: python main.py
+# Detailed per-process view
+nvidia-smi dmon -s puctem
 
-# If GPU Utilization is 0%, GPU is NOT being used (problem!)
-# See troubleshooting below if this happens
+# You should see during Stage 3–4:
+#   GPU Utilization : 80–99%
+#   Memory-Usage    : growing steadily
 ```
 
-**⚠️ Troubleshooting GPU Not Being Used:**
-```bash
-# While pipeline is running, check if RAPIDS is actually being used
-ps aux | grep python
+If GPU utilization stays at 0%, RAPIDS did not install correctly — see [Troubleshooting](#14-troubleshooting).
 
-# Then check detailed GPU process info
-nvidia-smi -q -d COMPUTE_CAP
-
-# If you see "GPU Utilization: 0%", RAPIDS didn't install correctly
-# Run this to fix:
-pip install --force-reinstall cudf-cu12 cugraph-cu12
-```
-
-### Terminal 2: Watch Database Growth
+### Database growth (Stage 1–2)
 
 ```bash
-# Monitor database file size
 watch -n 5 'du -sh public/data/citation_network.db'
-
-# Should steadily increase as papers are processed
 ```
 
-### Terminal 3: Check Logs
+### Tail pipeline logs
 
 ```bash
-# If running with nohup
-tail -f pipeline.log
-
-# Or if running directly
-# Just watch the terminal output
+tail -f citation_network_gpu/pipeline_stages_1_2.log
+tail -f citation_network_gpu/pipeline_stages_3_5.log
 ```
 
-### Terminal 4: Monitor System Resources
+### Live paper count
 
 ```bash
-# Check memory and CPU
+watch -n 10 'sqlite3 public/data/citation_network.db "SELECT COUNT(*) FROM graph_nodes;"'
+```
+
+### RAM usage
+
+```bash
 watch -n 2 free -h
-
-# Should see consistent memory usage
 ```
 
 ---
 
-## ✅ Verify Results
+## 14. Troubleshooting
 
-After the pipeline completes:
+### `database is locked`
 
-### Step 1: Check Database
+**Cause:** A stale pipeline process is still holding the connection.
 
 ```bash
-# Verify database was created
-ls -lh public/data/citation_network.db
-# Should be: 50-100 GB depending on paper count
+# Find and kill it
+ps aux | grep "main_stages" | grep -v grep
+pkill -f "main_stages_1_2.py"
 
-# Check database integrity
+# Verify DB is clean
 sqlite3 public/data/citation_network.db "PRAGMA integrity_check;"
-# Should return: ok
 ```
 
-### Step 2: Count Papers and Connections
+> With the producer-consumer architecture, `database is locked` should not occur
+> during normal Stage 1 operation — only 1 thread ever writes to SQLite.
+
+### `CUDA out of memory` during Stage 3–4
 
 ```bash
-# Count total papers
-sqlite3 public/data/citation_network.db "SELECT COUNT(*) as papers FROM nodes;"
-
-# Count citation connections
-sqlite3 public/data/citation_network.db "SELECT COUNT(*) as citations FROM edges;"
-
-# Count communities
-sqlite3 public/data/citation_network.db "SELECT COUNT(DISTINCT community_id) as communities FROM nodes;"
+# Reduce GPU edge-loading batch size
+python main_stages_3_5.py \
+    --db-path ../public/data/citation_network.db \
+    --batch-size 1000000    # 1M edges per GPU batch instead of default 5M
 ```
 
-### Step 3: Check JSON Exports
+If OOM persists the pipeline falls back to CPU automatically.
+
+### `ModuleNotFoundError`
 
 ```bash
-# Verify output JSON files
-ls -lh public/data/
+# Check virtual environment is active
+which python    # must show .../venv/bin/python
 
-# Should include:
-# - citation_network.db (database)
-# - graph_preview.json (web visualization data)
-# - pagination_api.json (API specs)
-# - map_manifest.json (metadata)
-```
-
-### Step 4: Sample the Data
-
-```bash
-# Check structure of preview JSON
-python3 << 'EOF'
-import json
-
-with open('public/data/graph_preview.json', 'r') as f:
-    data = json.load(f)
-    
-print(f"✓ Nodes: {len(data.get('nodes', []))}")
-print(f"✓ Edges: {len(data.get('edges', []))}")
-print(f"✓ Communities: {len(data.get('communities', {}))}")
-print(f"✓ File size: {len(json.dumps(data)) / 1e9:.2f} GB")
-EOF
-```
-
-✅ Results verified!
-
----
-
-## 🔧 Troubleshooting
-
-### Issue 1: Out of Memory (OOM)
-
-**Error message**: `CUDA out of memory`
-
-**Solution**:
-```bash
-# Reduce batch size in config.py
-nano config.py
-# Change: BATCH_SIZE = 25000  (reduce from 50,000)
-# Change: NUM_WORKERS = 4     (use fewer GPUs)
-
-# Or use command line:
-python main.py --input-dir ... --batch-size 25000 --num-gpus 4
-```
-
-### Issue 2: Python Module Not Found
-
-**Error message**: `ModuleNotFoundError: No module named 'torch'`
-
-**Solution**:
-```bash
-# Make sure virtual environment is activated
 source venv/bin/activate
-
-# Reinstall dependencies
-pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### Issue 3: Database Locked
+### Pipeline crashed mid-run — how to resume
 
-**Error message**: `database is locked`
+Stage 1 checkpoints after every file. Restart with the same command:
 
-**Solution**:
 ```bash
-# Check if another pipeline is running
-ps aux | grep main.py
-
-# If yes, wait for it to complete
-# Or kill it if it's stuck:
-pkill -f "python main.py"
-
-# Then restart:
-python main.py --input-dir ... 
+python main_stages_1_2.py \
+    --input-dir ../data/papers/ \
+    --db-path ../public/data/citation_network.db
+# Already-processed files are detected and skipped automatically.
 ```
 
-### Issue 4: Out of Disk Space
+Force a full restart (deletes existing DB):
 
-**Error message**: `No space left on device`
-
-**Solution**:
 ```bash
-# Check disk usage
+python main_stages_1_2.py --input-dir ../data/papers/ --db-path ../public/data/citation_network.db --reset-db
+```
+
+Resume Stage 3–5 from a specific stage:
+
+```bash
+python main_stages_3_5.py \
+    --db-path ../public/data/citation_network.db \
+    --resume-from layout    # options: community | layout | export
+```
+
+### Graph preview is empty in the browser
+
+1. Check `public/data/graph_preview.json` exists and has data:
+   ```bash
+   python3 -c "import json; d=json.load(open('public/data/graph_preview.json')); print(len(d['nodes']), 'nodes')"
+   ```
+2. Check the API server is running and responding:
+   ```bash
+   curl http://localhost:8080/api/graph/stats
+   ```
+3. Open browser DevTools → Console for JavaScript errors (usually a CORS or path mismatch).
+
+### Out of disk space
+
+```bash
 df -h /
 
-# Delete backups if any
-rm -f *.backup
+# Remove intermediate chunks after the full run completes
+rm data/papers/*_chunk_*.json
 
-# Or move database to larger disk and create symlink
-ln -s /large-disk/citation_network.db public/data/
+# Move DB to a larger disk and symlink it back
+mv public/data/citation_network.db /large-disk/
+ln -s /large-disk/citation_network.db public/data/citation_network.db
 ```
 
-### Issue 5: GPU Not Detected or Not Being Used (CRITICAL!)
+### GPU not detected / RAPIDS missing
 
-**Error message**: `CUDA device not found` or `No CUDA devices available`
-**Or**: GPU shows 0% utilization during processing (RAPIDS not working)
-
-**Solution A: GPU Not Visible at All**
 ```bash
-# Check GPU is visible
-nvidia-smi
+python diagnose_gpu.py
 
-# Check CUDA version
+# Reinstall RAPIDS (note your CUDA version first)
 nvcc --version
 
-# Reinstall PyTorch with correct CUDA version
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# CUDA 12.x
+pip install --force-reinstall --extra-index-url=https://pypi.nvidia.com cugraph-cu12
+
+# CUDA 11.x
+pip install --force-reinstall --extra-index-url=https://pypi.nvidia.com cugraph-cu11
 ```
 
-**Solution B: GPU Visible But Not Being Used (RAPIDS Problem)**
+The pipeline still completes without GPU — it uses igraph DRL (CPU, multi-threaded)
+for layout and python-louvain for community detection.
+
+---
+
+## 15. Quick Reference — All Commands
+
 ```bash
-# This is usually because RAPIDS (cudf/cugraph) didn't install correctly
+# ── Setup ────────────────────────────────────────────────────────────────────
+git clone https://github.com/hcharfeddine/Citation_Network.git
+cd Citation_Network/citation_network_gpu
+python3 -m venv venv && source venv/bin/activate
+pip install --upgrade pip && pip install -r requirements.txt
 
-# Step 1: Check if RAPIDS is actually installed
-python -c "import cudf; print('✓ cudf available')"
-python -c "import cugraph; print('✓ cugraph available')"
+# GPU (CUDA 12.x)
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+pip install --extra-index-url=https://pypi.nvidia.com cugraph-cu12 cuml-cu12
 
-# If either fails, RAPIDS is missing (this is the problem!)
+# GPU (CUDA 11.x)
+pip install torch --index-url https://download.pytorch.org/whl/cu118
+pip install --extra-index-url=https://pypi.nvidia.com cugraph-cu11 cuml-cu11
 
-# Step 2: Run diagnostic
+# Verify GPU
 python diagnose_gpu.py
 
-# Step 3: Reinstall RAPIDS (check CUDA version first!)
-nvcc --version  # Note if it's CUDA 12.x or 11.x
+# ── (Optional) Create subsets for testing ────────────────────────────────────
+python make_subset.py \
+    --input-dir ../data/papers/ \
+    --year-min 2000 --year-max 2024 \
+    --output-dir /tmp/subsets/
 
-# For CUDA 12:
-pip install --force-reinstall cudf-cu12 cugraph-cu12
+# ── Stage 1 + 2: Ingest & Deduplicate ────────────────────────────────────────
+python main_stages_1_2.py \
+    --input-dir ../data/papers/ \
+    --db-path ../public/data/citation_network.db
 
-# For CUDA 11:
-pip install --force-reinstall cudf-cu11 cugraph-cu11
+# ── Stage 3 + 4 + 5: Community, Layout & Export ──────────────────────────────
+python main_stages_3_5.py \
+    --db-path ../public/data/citation_network.db \
+    --export-dir ../public/data/
 
-# Step 4: Verify installation worked
-python -c "import cudf; print('✓ cudf version:', cudf.__version__)"
-python -c "import cugraph; print('✓ cugraph version:', cugraph.__version__)"
-
-# Step 5: Run diagnostic again to confirm
-python diagnose_gpu.py
-```
-
-**If RAPIDS still won't install:**
-- See `GPU_TROUBLESHOOTING.md` for detailed troubleshooting
-- Or run: `python diagnose_gpu.py` for automated diagnostics
-
-### Issue 6: Pipeline Crashed Mid-Run
-
-**Solution**: Resume from last checkpoint
-```bash
-# Find which stage failed
-tail -100 pipeline.log
-
-# Resume from that stage
+# ── Or run all 5 stages at once ───────────────────────────────────────────────
 python main.py \
-  --input-dir ../../data/papers \
-  --db public/data/citation_network.db \
-  --resume-from layout \
-  --num-gpus 8
+    --input-dir ../data/papers/ \
+    --db ../public/data/citation_network.db \
+    --num-gpus 8 --verbose
 
-# Replace "layout" with whichever stage failed
+# ── Verify ────────────────────────────────────────────────────────────────────
+sqlite3 ../public/data/citation_network.db "SELECT COUNT(*) FROM graph_nodes;"
+python3 -c "import json; d=json.load(open('public/data/graph_preview.json')); print(len(d['nodes']),'nodes')"
+
+# ── Run the web app ───────────────────────────────────────────────────────────
+# Terminal A — API server:
+pnpm --filter @workspace/api-server run dev
+
+# Terminal B — Frontend:
+pnpm --filter @workspace/citation-network run dev
 ```
 
 ---
 
+## Performance Summary
 
-## 🎉 What's Next?
-
-After the pipeline completes successfully:
-
-1. **Verify the data** using the commands in [Verify Results](#verify-results)
-2. **Access the network visualization** via the web interface (if setup)
-3. **Use the SQLite database** for custom queries
-
----
-
-## 📞 Getting Help
-
-If you encounter issues not covered here:
-
-1. **Check logs**: `tail -f pipeline.log`
-2. **Verify GPU**: `nvidia-smi`
-3. **Test imports**: `python -c "import torch"`
-4. **Check space**: `df -h /`
-5. **Review config**: `cat config.py`
-
----
-
-## 📝 Notes
-
-- **Always activate the virtual environment** before running commands: `source venv/bin/activate`
-- **Keep the input papers in** `data/papers/` for easy reference
-- **Use `nohup` or `tmux`** for long-running jobs to avoid terminal timeouts
-- **Monitor GPU usage** during the first 10 minutes to catch any issues early
-- **Backup your database** after successful completion
-
----
-
-
+| Bottleneck | Fix applied | Gain |
+|---|---|---|
+| Stage 1 SQLite lock contention | Producer-consumer: N parse threads + 1 write thread | Parsing fully parallel, zero lock contention |
+| Stage 1 write speed | `PRAGMA synchronous=OFF` during bulk ingest | 3–5x faster writes |
+| Stage 2 degree recalculation | `GROUP BY` temp table instead of O(N²) Python loop | ~100x faster for 54M papers |
+| Stage 3 edge loading | Stream directly to cuDF batches (never load all edges into Python) | Saves ~14 GB RAM, 2–3x faster |
+| Stage 4 OOM | Batched tiled repulsive forces instead of N×N matrix | 8 TB → manageable VRAM usage |
+| Stage 5 pagination | Keyset pagination (`WHERE rowid > ?`) instead of OFFSET | O(1) vs O(N) per page |
+| Large files (2–14 GB) | Auto-chunk to ≤500 MB + `make_subset.py` | ~10x faster parse per file |
