@@ -42,7 +42,27 @@ class PaperDataLoader:
         self.chunk_size = chunk_size
         if not self.input_dir.exists():
             raise ValueError(f"Input directory does not exist: {self.input_dir}")
-        self.json_files = sorted(self.input_dir.glob("*.json"))
+
+        all_files = sorted(self.input_dir.glob("*.json"))
+
+        # Safety net: if papers_2020.json was chunked into papers_2020_chunk_000.json etc.
+        # but the original was NOT deleted, skip the original to avoid processing
+        # every paper twice.
+        chunk_parents = {
+            f.stem[: f.stem.rfind("_chunk_")]
+            for f in all_files
+            if "_chunk_" in f.stem
+        }
+        skipped = [f for f in all_files if f.stem in chunk_parents]
+        self.json_files = [f for f in all_files if f.stem not in chunk_parents]
+
+        if skipped:
+            logger.warning(
+                f"Skipping {len(skipped)} original file(s) that have already been "
+                f"split into chunks (to avoid double-processing): "
+                f"{[f.name for f in skipped]}"
+            )
+
         logger.info(f"Found {len(self.json_files)} JSON files in {self.input_dir}")
 
     def iter_papers(self) -> Iterator[Dict]:

@@ -42,9 +42,19 @@ def main():
     logger.info(f"Auto-chunk: {'off' if args.no_auto_chunk else f'on ({args.chunk_size} MB)'}")
 
     if not args.no_auto_chunk:
-        result = auto_chunk_directory(input_dir=args.input_dir, max_mb=args.chunk_size)
+        # remove_originals=True: after splitting papers_2020.json into chunks,
+        # delete the original so PaperDataLoader doesn't see it AND the chunks
+        # and process all papers twice.
+        result = auto_chunk_directory(
+            input_dir=args.input_dir,
+            max_mb=args.chunk_size,
+            remove_originals=True,
+        )
         if result["files_split"] > 0:
-            logger.info(f"Auto-chunk: split {result['files_split']} file(s) into {result['chunks_created']} chunks")
+            logger.info(
+                f"Auto-chunk: split {result['files_split']} file(s) into "
+                f"{result['chunks_created']} chunks (originals removed)"
+            )
 
     config = PipelineConfig(
         input_dir=str(args.input_dir),
